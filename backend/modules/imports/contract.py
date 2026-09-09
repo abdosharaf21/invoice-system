@@ -17,7 +17,7 @@ Canonical field kinds decide how values are normalized:
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, Optional, Set
 

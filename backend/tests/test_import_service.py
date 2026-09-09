@@ -9,7 +9,6 @@ from unittest.mock import MagicMock
 
 from backend.modules.imports import errors as const
 from backend.modules.imports.service import ImportService
-from backend.modules.invoices.model import Invoice, InvoiceItem
 
 UUID_1 = "d3c6e4f7-1a2b-4c3d-8e5f-6a7b8c9d0e1f"
 UUID_2 = "e4d5f6a8-2b3c-4d5e-9f6a-7b8c9d0e1f23"
@@ -98,7 +97,7 @@ class TestImportService:
 
     def test_row_errors_persisted_on_completed_batch(self):
         harness = _Harness()
-        result = harness.import_csv(
+        harness.import_csv(
             "invoice_number,invoice_date,counterparty_name,item_description,unit_price\n"
             "INV-GOOD,2024-01-01,Acme,Widget,10.00\n"
             "INV-BAD,2024-01-02,Acme,Widget,not-a-number\n"

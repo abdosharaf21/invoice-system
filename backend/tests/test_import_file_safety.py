@@ -4,8 +4,6 @@ Covers extension allow-listing, size limits, path traversal and
 content sniffing. No database required.
 """
 
-import pytest
-
 from backend.modules.imports.file_safety import validate_file
 
 _CSV = b"invoice_number\nINV-1\n"

@@ -8,8 +8,8 @@ importing every format directly.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from dataclasses import dataclass
+from typing import Any, List
 
 
 class FileParseError(Exception):

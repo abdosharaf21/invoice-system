@@ -19,7 +19,6 @@ from typing import Any, Dict, List
 from decimal import Decimal
 
 from backend.modules.imports.grouping import InvoiceGroup
-from backend.modules.imports.normalizer import parse_money
 from backend.modules.imports.errors import (
     E_INVALID_MONEY,
     E_INVALID_ENUM,

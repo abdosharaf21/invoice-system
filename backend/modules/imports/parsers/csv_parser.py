@@ -8,7 +8,6 @@ padded with empty strings so every row reports the same column count.
 
 import csv
 import io
-from typing import List, Optional
 
 from backend.modules.imports.parsers.base import FileParseError, FileParser, ParsedFile
 

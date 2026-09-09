@@ -10,8 +10,8 @@ Error codes are stable strings and can be referenced by fix-up tooling
 and by the frontend to render field-specific help.
 """
 
-from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from dataclasses import dataclass
+from typing import List, Optional
 
 E_MISSING_FIELD = "MISSING_FIELD"
 E_INVALID_UUID = "INVALID_UUID"

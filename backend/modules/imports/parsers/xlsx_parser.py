@@ -8,7 +8,7 @@ rest of the pipeline is format-agnostic.
 
 import io
 import zipfile
-from typing import Any, List
+from typing import Any
 
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
