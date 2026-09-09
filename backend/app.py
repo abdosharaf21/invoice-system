@@ -26,6 +26,11 @@ from backend.modules.users.repository import UserRepository
 from backend.modules.users.service import UserService
 from backend.modules.users.model import User
 
+from backend.modules.imports.routes import imports_bp, init_import_service
+from backend.modules.imports.repository import ImportBatchRepository
+from backend.modules.imports.service import ImportService
+from backend.modules.invoices.repository import InvoiceRepository
+
 from backend.middleware import (
     register_error_handlers,
     register_security_headers,
@@ -167,10 +172,16 @@ def create_app(config: dict = None) -> Flask:
     auth_service = AuthService(auth_repo, user_repo, jwt_blocklist)
     init_auth_service(auth_service)
 
+    batch_repo = ImportBatchRepository(database)
+    invoice_repo = InvoiceRepository(database)
+    import_service = ImportService(batch_repo, invoice_repo, user_repo)
+    init_import_service(import_service)
+
     atexit.register(database.close_all)
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(imports_bp)
 
     @app.get("/api/health")
     def health_check():

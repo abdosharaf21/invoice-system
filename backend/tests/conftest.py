@@ -35,6 +35,9 @@ class _MockRepos:
     def __init__(self):
         self.user_repo = None
         self.auth_repo = None
+        self.batch_repo = None
+        self.invoice_repo = None
+        self.import_service = None
 
 
 @pytest.fixture
@@ -52,10 +55,18 @@ def app(mock_repos):
     """
     user_repo_mock = MagicMock()
     auth_repo_mock = MagicMock()
+    batch_repo_mock = MagicMock()
+    invoice_repo_mock = MagicMock()
+    import_service_mock = MagicMock()
+
+    import_service_mock.company_for_user.return_value = 1
 
     patches = [
         patch("backend.app.AuthRepository", return_value=auth_repo_mock),
         patch("backend.app.UserRepository", return_value=user_repo_mock),
+        patch("backend.app.ImportBatchRepository", return_value=batch_repo_mock),
+        patch("backend.app.InvoiceRepository", return_value=invoice_repo_mock),
+        patch("backend.app.ImportService", return_value=import_service_mock),
         patch("backend.database.connection.Database._initialize_pool"),
     ]
 
@@ -64,6 +75,9 @@ def app(mock_repos):
 
     mock_repos.user_repo = user_repo_mock
     mock_repos.auth_repo = auth_repo_mock
+    mock_repos.batch_repo = batch_repo_mock
+    mock_repos.invoice_repo = invoice_repo_mock
+    mock_repos.import_service = import_service_mock
 
     from backend.app import create_app
 
