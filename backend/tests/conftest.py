@@ -140,6 +140,17 @@ def employee_token(app):
 
 
 @pytest.fixture
+def viewer_token(app):
+    """Valid JWT access token for a viewer user."""
+    with app.app_context():
+        from flask_jwt_extended import create_access_token
+        return create_access_token(
+            identity="4",
+            additional_claims={"email": "viewer@test.com", "role": "viewer", "full_name": "Viewer User"},
+        )
+
+
+@pytest.fixture
 def admin_refresh_token(app):
     """Valid JWT refresh token for an admin user."""
     with app.app_context():
@@ -163,6 +174,12 @@ def manager_headers(manager_token):
 def employee_headers(employee_token):
     """HTTP Authorization header dict for employee."""
     return {"Authorization": f"Bearer {employee_token}"}
+
+
+@pytest.fixture
+def viewer_headers(viewer_token):
+    """HTTP Authorization header dict for viewer."""
+    return {"Authorization": f"Bearer {viewer_token}"}
 
 
 # ---------------------------------------------------------------------------

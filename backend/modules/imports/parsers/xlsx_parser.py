@@ -7,6 +7,7 @@ rest of the pipeline is format-agnostic.
 """
 
 import io
+import zipfile
 from typing import Any, List
 
 from openpyxl import load_workbook
@@ -38,7 +39,7 @@ class XlsxParser(FileParser):
                 read_only=True,
                 data_only=True,
             )
-        except (InvalidFileException, KeyError, ValueError, OSError) as e:
+        except (InvalidFileException, zipfile.BadZipFile, KeyError, ValueError, OSError) as e:
             raise FileParseError(f"Could not read XLSX content: {e}")
 
         sheet = workbook.worksheets[0]
