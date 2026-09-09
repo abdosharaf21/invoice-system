@@ -204,6 +204,8 @@ class ImportService:
         if persisted_invoice_rows == 0 and (errors or parsed.total_rows == 0):
             status = "failed"
 
+        self._persist_errors(batch.id, errors)
+
         error_rows = max(parsed.total_rows - persisted_invoice_rows, 0)
         self._batch_repo.update_counts(
             batch.id,
@@ -420,16 +422,11 @@ class ImportService:
         except KeyError:
             return None
 
-    def _finish_failed(
-        self,
-        batch: models.ImportBatch,
-        errors: List[ImportErrorInfo],
-        total_rows: int = 0,
-    ) -> ImportResult:
+    def _persist_errors(self, batch_id: int, errors: List[ImportErrorInfo]) -> None:
         for error in errors:
             try:
                 self._batch_repo.add_error(models.ImportBatchError(
-                    batch_id=batch.id,
+                    batch_id=batch_id,
                     row_number=error.row_number,
                     field=error.field,
                     error_code=error.error_code,
@@ -437,7 +434,15 @@ class ImportService:
                     raw_data=error.raw_data,
                 ))
             except Exception:
-                logger.exception("Failed to persist import error for batch %s", batch.id)
+                logger.exception("Failed to persist import error for batch %s", batch_id)
+
+    def _finish_failed(
+        self,
+        batch: models.ImportBatch,
+        errors: List[ImportErrorInfo],
+        total_rows: int = 0,
+    ) -> ImportResult:
+        self._persist_errors(batch.id, errors)
 
         error_rows = 1 if errors else 0
         self._batch_repo.update_counts(

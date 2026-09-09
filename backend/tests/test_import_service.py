@@ -96,6 +96,20 @@ class TestImportService:
         assert result.errors[0].row_number == 2
         assert result.errors[0].error_code == "INVALID_MONEY"
 
+    def test_row_errors_persisted_on_completed_batch(self):
+        harness = _Harness()
+        result = harness.import_csv(
+            "invoice_number,invoice_date,counterparty_name,item_description,unit_price\n"
+            "INV-GOOD,2024-01-01,Acme,Widget,10.00\n"
+            "INV-BAD,2024-01-02,Acme,Widget,not-a-number\n"
+        )
+        assert harness.batch_repo.add_error.call_count == 1
+        error = harness.batch_repo.add_error.call_args.args[0]
+        assert error.batch_id == 7
+        assert error.row_number == 2
+        assert error.error_code == "INVALID_MONEY"
+        assert error.field == "unit_price"
+
     def test_in_file_duplicate_detected(self):
         harness = _Harness()
         result = harness.import_csv(
