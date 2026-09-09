@@ -72,6 +72,10 @@ mysql -h $DB_HOST -u $DB_USER -p $DB_NAME \
   < backend/database/migrations/002_einvoice_domain.sql
 mysql -h $DB_HOST -u $DB_USER -p $DB_NAME \
   < backend/database/migrations/003_import_columns.sql
+mysql -h $DB_HOST -u $DB_USER -p $DB_NAME \
+  < backend/database/migrations/004_reconciliation_error_columns.sql
+mysql -h $DB_HOST -u $DB_USER -p $DB_NAME \
+  < backend/database/migrations/005_widen_reconciliation_match_status.sql
 ```
 
 Copy `.env.example` to `.env` and set real credentials before running.
@@ -146,6 +150,108 @@ d3c6e4f7-1a2b-4c3d-8e5f-6a7b8c9d0e1f,INV-100,2024-03-01,EGP,Acme Corp,Widget A,2
 d3c6e4f7-1a2b-4c3d-8e5f-6a7b8c9d0e1f,INV-100,2024-03-01,EGP,Acme Corp,Widget B,1,50.00,14
 ,INV-101,2024-03-02,EGP,Globex Ltd,Gadget,5,20.00,0
 ```
+
+## Reconciliation
+
+The reconciliation engine compares a company's accounting invoices
+(`invoices`) against the e-invoice documents received from the tax authority
+(`tax_invoices`) for a given calendar period (`YYYY-MM`). It produces a
+deterministic per-invoice match outcome plus field-level errors explaining any
+discrepancies, and records everything in a reconciliation run.
+
+### Matching hierarchy
+
+Identities are resolved strictly, in order — no fuzzy matching:
+
+1. Valid UUID on both sides → match by UUID (normalized to lowercase,
+   `{}` stripped). This drives the tax authority's `EINVOICE_HASHTEXT` /
+   `uuid` linkage.
+2. No valid UUID at all → match accounting `invoice_number` against the tax
+   invoice's `internal_id`, scoped to the company and case-insensitive.
+3. A malformed/unparseable UUID on either side → the invoice is `invalid`
+   and never matched: a broken identity must not be guessed.
+
+Matching uses O(1) dictionary lookups over both collections (by UUID, and by
+`company_id + internal_id`), so runs are linear and stable.
+
+### Normalization
+
+- **Money**: parsed to `Decimal`, compared with exact equality by default. An
+  optional `money_tolerance` (a `Decimal`, non-negative) may be passed per
+  run; any difference within tolerance still passes but the absolute
+  difference is preserved on the error row.
+- **Dates**: compared at date granularity only — time-of-day and timezone are
+  ignored (the schema stores no timezone).
+- Any unparseable value is treated as absent and flagged `invalid`.
+
+### Compared fields
+
+| Accounting invoice | Tax authority invoice          | Error code on mismatch        |
+| ------------------ | ------------------------------ | ----------------------------- |
+| `invoice_date`     | `issue_datetime`               | `INVOICE_DATE_MISMATCH`       |
+| `currency`         | `currency`                     | `CURRENCY_MISMATCH`           |
+| `counterparty_tax_id` | buyer/seller TIN            | `COUNTERPARTY_TAX_ID_MISMATCH`|
+| `counterparty_name` | buyer/seller name             | `COUNTERPARTY_NAME_MISMATCH`  |
+| `subtotal_amount`  | `total_sales`                  | `SUBTOTAL_AMOUNT_MISMATCH`    |
+| `discount_amount`  | `total_discount`               | `DISCOUNT_AMOUNT_MISMATCH`    |
+| `subtotal − discount` (derived) | `net_amount`      | `NET_AMOUNT_MISMATCH`         |
+| `vat_amount`       | `vat_amount`                   | `VAT_AMOUNT_MISMATCH`         |
+| `total_amount`     | `total_amount`                 | `TOTAL_AMOUNT_MISMATCH`       |
+| item count         | item count                     | `ITEM_COUNT_MISMATCH`         |
+| item quantity sum  | item quantity sum              | `ITEM_QUANTITY_SUM_MISMATCH`  |
+| item VAT sum       | item VAT sum                   | `ITEM_VAT_SUM_MISMATCH`       |
+| item line-total sum| item line-total sum            | `ITEM_TOTAL_SUM_MISMATCH`     |
+
+The counterparty check accepts a match against either the buyer **or** seller
+TIN of the tax invoice (the accounting side carries a single tax id), and the
+name is verified against both buyer and seller names.
+
+### Result statuses
+
+- `matched` — identity + all compared fields agree.
+- `mismatched` — identity is certain but one or more fields differ (or both
+  sides share an invalid value that still allows a confident on-invoice match;
+  identification only).
+- `missing_in_tax_authority` — accounting invoice has no tax-side counterpart.
+- `extra_in_tax_authority` — tax invoice has no accounting-side counterpart.
+- `invalid` — identity could not be trusted (malformed UUID in scope), so no
+  comparison happened.
+
+Run statuses: `pending` → `running` → `completed` or `failed`. A run is
+`completed` once all results/errors are persisted atomically in a single
+transaction. `unmatched_count` = mismatched + missing + extra + invalid.
+`error_count` is recomputed from persisted error rows.
+
+### Errors
+
+Each error row carries `source_type` (`account`/`tax`), `entity_id`,
+`error_type`, `field`, `accounting_value`, `tax_authority_value`,
+`difference` and a human-readable `message`. Error type codes include
+`INVALID_UUID`, `INVALID_DATE`, `INVALID_FINANCIAL_VALUE` and the field codes
+in the table above.
+
+### Endpoints
+
+All require a valid token and the `admin`, `accountant` or `manager` role,
+and are scoped to the authenticated user's company:
+
+- `POST /api/reconciliation/runs` — body `{"period": "YYYY-MM"}` plus
+  optional `money_tolerance`. Starts and waits for the run, then returns the
+  run summary with per-status counts.
+- `GET /api/reconciliation/runs` — list runs (`limit`/`offset`).
+- `GET /api/reconciliation/runs/<id>` — run + per-status counts.
+- `GET /api/reconciliation/runs/<id>/results` — match outcomes enriched with
+  invoice number and both UUids / `internal_id`.
+- `GET /api/reconciliation/runs/<id>/errors` — field-level discrepancies.
+
+### Limitations
+
+- Reconciliation can only see invoices that exist in both stores; there is no
+  pull from an external tax-authority API in this phase.
+- Line items are compared as aggregates (count, quantity/VAT/total sums); a
+  line-by-line description fingerprint is not implemented.
+- Period filters match the leading `YYYY-MM` of the date; invoices are
+  assigned to the period of their accounting `invoice_date`.
 
 ## Running tests
 
