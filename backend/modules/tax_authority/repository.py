@@ -202,6 +202,23 @@ class TaxInvoiceRepository:
             except mysql.connector.Error:
                 raise
 
+    def list_by_company_and_period(self, company_id: int, period: str) -> List[TaxInvoice]:
+        """List tax invoices issued in a 'YYYY-MM' period with items."""
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                query = """
+                    SELECT * FROM tax_invoices
+                    WHERE company_id = %s AND issue_datetime LIKE %s
+                    ORDER BY issue_datetime ASC, id ASC
+                """
+                cursor.execute(query, (company_id, f"{period}%"))
+                tax_invoices = [self._row_to_tax_invoice(row) for row in cursor.fetchall()]
+                for tax_invoice in tax_invoices:
+                    tax_invoice.items = self._load_items(cursor, tax_invoice.id)
+                return tax_invoices
+            except mysql.connector.Error:
+                raise
+
     def count_by_company_and_period(self, company_id: int, period: str) -> int:
         """Count tax invoices issued in a 'YYYY-MM' period."""
         with self._database.connection() as conn, db_cursor(conn) as cursor:

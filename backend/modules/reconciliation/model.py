@@ -20,6 +20,10 @@ class ReconciliationError:
         source_type: str = "account",
         entity_id: Optional[int] = None,
         error_type: Optional[str] = None,
+        field: Optional[str] = None,
+        accounting_value: Optional[str] = None,
+        tax_authority_value: Optional[str] = None,
+        difference=None,
         message: Optional[str] = None,
         created_at: Optional[datetime] = None
     ) -> None:
@@ -28,6 +32,10 @@ class ReconciliationError:
         self.source_type = source_type
         self.entity_id = entity_id
         self.error_type = error_type
+        self.field = field
+        self.accounting_value = accounting_value
+        self.tax_authority_value = tax_authority_value
+        self.difference = difference
         self.message = message
         self.created_at = created_at or datetime.now()
 
@@ -38,6 +46,10 @@ class ReconciliationError:
             "source_type": self.source_type,
             "entity_id": self.entity_id,
             "error_type": self.error_type,
+            "field": self.field,
+            "accounting_value": self.accounting_value,
+            "tax_authority_value": self.tax_authority_value,
+            "difference": float(self.difference) if self.difference is not None else None,
             "message": self.message,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
@@ -50,6 +62,10 @@ class ReconciliationError:
             source_type=data.get("source_type", "account"),
             entity_id=data.get("entity_id"),
             error_type=data.get("error_type"),
+            field=data.get("field"),
+            accounting_value=data.get("accounting_value"),
+            tax_authority_value=data.get("tax_authority_value"),
+            difference=data.get("difference"),
             message=data.get("message"),
             created_at=_parse_datetime(data.get("created_at"))
         )

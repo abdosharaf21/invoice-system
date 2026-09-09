@@ -61,8 +61,12 @@ class ReconciliationRepository:
             source_type=row[2],
             entity_id=row[3],
             error_type=row[4],
-            message=row[5],
-            created_at=row[6]
+            field=row[5],
+            accounting_value=row[6],
+            tax_authority_value=row[7],
+            difference=row[8],
+            message=row[9],
+            created_at=row[10]
         )
 
     def create_run(self, run: ReconciliationRun) -> ReconciliationRun:
@@ -248,18 +252,154 @@ class ReconciliationRepository:
             except mysql.connector.Error:
                 raise
 
+    def finish_run_transaction(
+        self,
+        run_id: int,
+        results,
+        errors,
+        invoice_count: int,
+        tax_invoice_count: int,
+        matched_count: int,
+        unmatched_count: int,
+        error_count: int,
+    ) -> bool:
+        """Persist a completed run atomically.
+
+        Inserts the run's reconciliation results and errors and flips the run
+        status to ``completed`` in a single transaction, so a run is never
+        half-persisted or marked completed while its outcomes are incomplete.
+        """
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                insert_result = """
+                    INSERT INTO reconciliation_results
+                        (run_id, account_invoice_id, tax_invoice_id,
+                         match_status, discrepancy_amount, notes)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """
+                for result in results:
+                    cursor.execute(insert_result, (
+                        run_id,
+                        result.account_invoice_id,
+                        result.tax_invoice_id,
+                        result.match_status,
+                        result.discrepancy_amount,
+                        result.notes
+                    ))
+
+                insert_error = """
+                    INSERT INTO reconciliation_errors
+                        (run_id, source_type, entity_id, field,
+                         accounting_value, tax_authority_value, difference,
+                         error_type, message)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                for error in errors:
+                    cursor.execute(insert_error, (
+                        run_id,
+                        error.source_type,
+                        error.entity_id,
+                        error.field,
+                        error.accounting_value,
+                        error.tax_authority_value,
+                        error.difference,
+                        error.error_type,
+                        error.message
+                    ))
+
+                update_query = """
+                    UPDATE reconciliation_runs
+                    SET status = 'completed',
+                        invoice_count = %s, tax_invoice_count = %s,
+                        matched_count = %s, unmatched_count = %s,
+                        error_count = %s, finished_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = %s AND status IN ('running', 'pending')
+                """
+                cursor.execute(update_query, (
+                    invoice_count, tax_invoice_count,
+                    matched_count, unmatched_count, error_count, run_id
+                ))
+                conn.commit()
+                return cursor.rowcount > 0
+            except mysql.connector.Error:
+                conn.rollback()
+                raise
+
+    def get_results_with_details(self, run_id: int) -> List[dict]:
+        """List results for a run, enriched with invoice references."""
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                query = """
+                    SELECT r.*,
+                           i.invoice_number,
+                           i.uuid AS account_uuid,
+                           t.uuid AS tax_uuid,
+                           t.internal_id AS tax_internal_id
+                    FROM reconciliation_results r
+                    LEFT JOIN invoices i ON i.id = r.account_invoice_id
+                    LEFT JOIN tax_invoices t ON t.id = r.tax_invoice_id
+                    WHERE r.run_id = %s
+                    ORDER BY r.id
+                """
+                cursor.execute(query, (run_id,))
+                rows = cursor.fetchall()
+                n = cursor.column_names.index("invoice_number")
+                return [
+                    {
+                        "id": row[0],
+                        "run_id": row[1],
+                        "account_invoice_id": row[2],
+                        "tax_invoice_id": row[3],
+                        "match_status": row[4],
+                        "discrepancy_amount": row[5],
+                        "notes": row[6],
+                        "created_at": row[7].isoformat() if row[7] else None,
+                        "account_invoice_number": row[n],
+                        "account_uuid": row[n + 1],
+                        "tax_uuid": row[n + 2],
+                        "tax_internal_id": row[n + 3],
+                    }
+                    for row in rows
+                ]
+            except mysql.connector.Error:
+                raise
+
+    def get_results_summary(self, run_id: int) -> dict:
+        """Count results per match_status for a run in one query."""
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(
+                    """
+                    SELECT match_status, COUNT(*)
+                    FROM reconciliation_results
+                    WHERE run_id = %s
+                    GROUP BY match_status
+                    """,
+                    (run_id,)
+                )
+                return {row[0]: int(row[1]) for row in cursor.fetchall()}
+            except mysql.connector.Error:
+                raise
+
     def add_error(self, error: ReconciliationError) -> ReconciliationError:
         with self._database.connection() as conn, db_cursor(conn) as cursor:
             try:
                 query = """
                     INSERT INTO reconciliation_errors
-                        (run_id, source_type, entity_id, error_type, message)
-                    VALUES (%s, %s, %s, %s, %s)
+                        (run_id, source_type, entity_id, field,
+                         accounting_value, tax_authority_value, difference,
+                         error_type, message)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(query, (
                     error.run_id,
                     error.source_type,
                     error.entity_id,
+                    error.field,
+                    error.accounting_value,
+                    error.tax_authority_value,
+                    error.difference,
                     error.error_type,
                     error.message
                 ))

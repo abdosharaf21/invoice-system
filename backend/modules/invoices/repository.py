@@ -1,6 +1,6 @@
 """Invoice repository for database operations on the invoices and invoice_items tables."""
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import List, Optional
 
 import mysql.connector
@@ -182,6 +182,23 @@ class InvoiceRepository:
                     LIMIT %s OFFSET %s
                 """
                 cursor.execute(query, (company_id, limit, offset))
+                invoices = [self._row_to_invoice(row) for row in cursor.fetchall()]
+                for invoice in invoices:
+                    invoice.items = self._load_items(cursor, invoice.id)
+                return invoices
+            except mysql.connector.Error:
+                raise
+
+    def list_by_company_and_period(self, company_id: int, period: str) -> List[Invoice]:
+        """List accounting invoices in a 'YYYY-MM' period with items."""
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                query = """
+                    SELECT * FROM invoices
+                    WHERE company_id = %s AND invoice_date LIKE %s
+                    ORDER BY invoice_date ASC, id ASC
+                """
+                cursor.execute(query, (company_id, f"{period}%"))
                 invoices = [self._row_to_invoice(row) for row in cursor.fetchall()]
                 for invoice in invoices:
                     invoice.items = self._load_items(cursor, invoice.id)
