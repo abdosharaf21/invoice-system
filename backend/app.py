@@ -24,12 +24,19 @@ from backend.modules.auth.service import AuthService
 from backend.modules.users.routes import users_bp, init_user_service
 from backend.modules.users.repository import UserRepository
 from backend.modules.users.service import UserService
-from backend.modules.users.model import User
 
 from backend.modules.imports.routes import imports_bp, init_import_service
 from backend.modules.imports.repository import ImportBatchRepository
 from backend.modules.imports.service import ImportService
 from backend.modules.invoices.repository import InvoiceRepository
+
+from backend.modules.reconciliation.routes import (
+    reconciliation_bp,
+    init_reconciliation_service,
+)
+from backend.modules.reconciliation.repository import ReconciliationRepository
+from backend.modules.reconciliation.service import ReconciliationService
+from backend.modules.tax_authority.repository import TaxInvoiceRepository
 
 from backend.middleware import (
     register_error_handlers,
@@ -177,11 +184,19 @@ def create_app(config: dict = None) -> Flask:
     import_service = ImportService(batch_repo, invoice_repo, user_repo)
     init_import_service(import_service)
 
+    tax_repo = TaxInvoiceRepository(database)
+    recon_repo = ReconciliationRepository(database)
+    reconciliation_service = ReconciliationService(
+        recon_repo, invoice_repo, tax_repo, user_repo
+    )
+    init_reconciliation_service(reconciliation_service)
+
     atexit.register(database.close_all)
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(imports_bp)
+    app.register_blueprint(reconciliation_bp)
 
     @app.get("/api/health")
     def health_check():
