@@ -38,6 +38,9 @@ class _MockRepos:
         self.batch_repo = None
         self.invoice_repo = None
         self.import_service = None
+        self.tax_repo = None
+        self.recon_repo = None
+        self.reconciliation_service = None
 
 
 @pytest.fixture
@@ -58,8 +61,12 @@ def app(mock_repos):
     batch_repo_mock = MagicMock()
     invoice_repo_mock = MagicMock()
     import_service_mock = MagicMock()
+    tax_repo_mock = MagicMock()
+    recon_repo_mock = MagicMock()
+    reconciliation_service_mock = MagicMock()
 
     import_service_mock.company_for_user.return_value = 1
+    reconciliation_service_mock.company_for_user.return_value = 1
 
     patches = [
         patch("backend.app.AuthRepository", return_value=auth_repo_mock),
@@ -67,6 +74,14 @@ def app(mock_repos):
         patch("backend.app.ImportBatchRepository", return_value=batch_repo_mock),
         patch("backend.app.InvoiceRepository", return_value=invoice_repo_mock),
         patch("backend.app.ImportService", return_value=import_service_mock),
+        patch("backend.app.TaxInvoiceRepository", return_value=tax_repo_mock),
+        patch(
+            "backend.app.ReconciliationRepository", return_value=recon_repo_mock
+        ),
+        patch(
+            "backend.app.ReconciliationService",
+            return_value=reconciliation_service_mock,
+        ),
         patch("backend.database.connection.Database._initialize_pool"),
     ]
 
@@ -78,6 +93,9 @@ def app(mock_repos):
     mock_repos.batch_repo = batch_repo_mock
     mock_repos.invoice_repo = invoice_repo_mock
     mock_repos.import_service = import_service_mock
+    mock_repos.tax_repo = tax_repo_mock
+    mock_repos.recon_repo = recon_repo_mock
+    mock_repos.reconciliation_service = reconciliation_service_mock
 
     from backend.app import create_app
 
