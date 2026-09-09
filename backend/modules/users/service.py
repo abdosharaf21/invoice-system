@@ -1,6 +1,6 @@
 """User service for user-related business logic."""
 
-from typing import Optional, List, Set
+from typing import List, Optional, Set
 
 from backend.modules.users.model import User
 from backend.modules.users.repository import UserRepository
@@ -18,6 +18,8 @@ class UserService:
     Handles all user-related business logic including authentication,
     registration, and user management.
     """
+
+    DEFAULT_ROLE = "viewer"
 
     def __init__(self, user_repository: UserRepository, blocklist: Set[str] = None) -> None:
         self._user_repository = user_repository
@@ -41,8 +43,10 @@ class UserService:
         if not verify_password(password, user.password_hash):
             raise ValueError("Invalid email or password")
 
-        if user.status != "active":
+        if not user.is_active:
             raise ValueError("Account is inactive")
+
+        self._user_repository.update_last_login(user.id)
 
         access_token = create_access_token_for_user(user)
 
@@ -73,18 +77,24 @@ class UserService:
     def create_user(self, user_data: dict) -> User:
         validated = UserValidator.validate_create_user(user_data)
 
+        if self._user_repository.exists_by_username(validated["username"]):
+            raise ValueError("Username already exists")
+
         if self._user_repository.exists_by_email(validated["email"]):
             raise ValueError("Email already exists")
 
         password_hash = hash_password(validated["password"])
+        roles = validated["roles"] or [self.DEFAULT_ROLE]
 
         user = User(
-            full_name=validated["full_name"],
+            company_id=validated["company_id"],
+            username=validated["username"],
             email=validated["email"],
             password_hash=password_hash,
-            phone=validated["phone"],
-            role=validated["role"],
-            status=validated["status"]
+            first_name=validated["first_name"],
+            last_name=validated["last_name"],
+            is_active=validated["status"] == "active",
+            roles=roles,
         )
 
         return self._user_repository.create(user)
@@ -100,22 +110,33 @@ class UserService:
             if self._user_repository.exists_by_email(validated["email"]):
                 raise ValueError("Email already exists")
 
+        if "username" in validated and validated["username"] != user.username:
+            if self._user_repository.exists_by_username(validated["username"]):
+                raise ValueError("Username already exists")
+
+        next_role = validated.get("roles", [user.role])[0] if validated.get("roles", [user.role]) else user.role
         self._guard_last_active_admin(
             user,
-            next_role=validated.get("role", user.role),
+            next_role=next_role,
             next_status=validated.get("status", user.status),
         )
 
-        if "full_name" in validated:
-            user.full_name = validated["full_name"]
+        if "username" in validated:
+            user.username = validated["username"]
         if "email" in validated:
             user.email = validated["email"]
-        if "phone" in validated:
-            user.phone = validated["phone"]
-        if "role" in validated:
-            user.role = validated["role"]
+        if "first_name" in validated:
+            user.first_name = validated["first_name"]
+        if "last_name" in validated:
+            user.last_name = validated["last_name"]
+        if "company_id" in validated:
+            user.company_id = validated["company_id"]
         if "status" in validated:
-            user.status = validated["status"]
+            user.is_active = validated["status"] == "active"
+        if "roles" in validated:
+            if not validated["roles"]:
+                raise ValueError("At least one role is required")
+            self._user_repository.set_roles(user.id, validated["roles"])
 
         updated = self._user_repository.update(user)
         if updated is None:
@@ -144,7 +165,7 @@ class UserService:
         if user is None:
             raise ValueError("User not found")
 
-        user.status = "active"
+        user.is_active = True
         updated = self._user_repository.update(user)
         if updated is None:
             raise ValueError("Failed to activate user")
@@ -162,7 +183,7 @@ class UserService:
             next_status="inactive",
         )
 
-        user.status = "inactive"
+        user.is_active = False
         updated = self._user_repository.update(user)
         if updated is None:
             raise ValueError("Failed to deactivate user")
@@ -190,7 +211,7 @@ class UserService:
     def _guard_last_active_admin(
         self,
         user: User,
-        next_role: str,
+        next_role: Optional[str],
         next_status: str,
         removing: bool = False,
     ) -> None:

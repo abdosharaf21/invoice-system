@@ -1,7 +1,7 @@
 """User model representing the users table."""
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 
 class User:
@@ -9,12 +9,16 @@ class User:
 
     Attributes:
         id: Unique identifier for the user.
-        full_name: User's full name.
-        email: User's email address.
+        company_id: Company the user belongs to (None for platform-level
+            admins).
+        username: Unique login/username.
+        email: User's email address (used for authentication).
         password_hash: Hashed password string.
-        phone: User's phone number.
-        role: User's role (admin, manager, employee).
-        status: User's status (active, inactive).
+        first_name: User's first name.
+        last_name: User's last name.
+        is_active: Whether the account is active.
+        roles: List of role names assigned to the user.
+        last_login_at: Timestamp of the last successful login.
         created_at: Timestamp when the user was created.
         updated_at: Timestamp when the user was last updated.
     """
@@ -22,33 +26,59 @@ class User:
     def __init__(
         self,
         id: Optional[int] = None,
-        full_name: Optional[str] = None,
+        company_id: Optional[int] = None,
+        username: Optional[str] = None,
         email: Optional[str] = None,
         password_hash: Optional[str] = None,
-        phone: Optional[str] = None,
-        role: str = "employee",
-        status: str = "active",
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        is_active: bool = True,
+        roles: Optional[List[str]] = None,
+        last_login_at: Optional[datetime] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None
     ) -> None:
         self.id = id
-        self.full_name = full_name
+        self.company_id = company_id
+        self.username = username
         self.email = email
         self.password_hash = password_hash
-        self.phone = phone
-        self.role = role
-        self.status = status
+        self.first_name = first_name
+        self.last_name = last_name
+        self.is_active = is_active
+        self.roles = roles if roles is not None else []
+        self.last_login_at = last_login_at
         self.created_at = created_at or datetime.now()
         self.updated_at = updated_at or datetime.now()
+
+    @property
+    def full_name(self) -> str:
+        """Full name assembled from first and last name."""
+        return " ".join(part for part in (self.first_name, self.last_name) if part).strip()
+
+    @property
+    def role(self) -> Optional[str]:
+        """Primary role, used for JWT claims and RBAC."""
+        return self.roles[0] if self.roles else None
+
+    @property
+    def status(self) -> str:
+        """Human-readable account status derived from is_active."""
+        return "active" if self.is_active else "inactive"
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "full_name": self.full_name,
+            "company_id": self.company_id,
+            "username": self.username,
             "email": self.email,
-            "phone": self.phone,
-            "role": self.role,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "full_name": self.full_name,
+            "roles": list(self.roles),
+            "is_active": self.is_active,
             "status": self.status,
+            "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
@@ -63,14 +93,24 @@ class User:
         if updated_at and isinstance(updated_at, str):
             updated_at = datetime.fromisoformat(updated_at)
 
+        last_login_at = data.get("last_login_at")
+        if last_login_at and isinstance(last_login_at, str):
+            last_login_at = datetime.fromisoformat(last_login_at)
+
+        status = data.get("status", "active")
+        is_active = data.get("is_active", status == "active")
+
         return cls(
             id=data.get("id"),
-            full_name=data.get("full_name"),
+            company_id=data.get("company_id"),
+            username=data.get("username"),
             email=data.get("email"),
             password_hash=data.get("password_hash"),
-            phone=data.get("phone"),
-            role=data.get("role", "employee"),
-            status=data.get("status", "active"),
+            first_name=data.get("first_name"),
+            last_name=data.get("last_name"),
+            is_active=bool(is_active),
+            roles=list(data.get("roles") or []),
+            last_login_at=last_login_at,
             created_at=created_at,
             updated_at=updated_at
         )

@@ -37,10 +37,12 @@ def test_me_with_valid_token(client, admin_token, mock_repos):
     """GET /api/auth/me with valid token returns user data."""
     mock_user = User(
         id=1,
-        full_name="Admin User",
+        username="admin",
         email="admin@test.com",
-        role="admin",
-        status="active",
+        first_name="Admin",
+        last_name="User",
+        roles=["admin"],
+        is_active=True,
     )
     mock_repos.user_repo.get_by_id.return_value = mock_user
     response = client.get(

@@ -1,30 +1,31 @@
 """User validator for user input validation."""
 
 import re
-from typing import Dict, Any
+from typing import Any, Dict, List
 
 
 class UserValidator:
     """Validator for user input data.
 
     Handles all validation logic for user-related operations.
+    Roles are validated against the platform's seeded role names.
     """
 
-    VALID_ROLES = ["admin", "manager", "employee"]
+    VALID_ROLES = ["admin", "accountant", "manager", "viewer"]
     VALID_STATUSES = ["active", "inactive"]
     EMAIL_REGEX = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    PHONE_REGEX = r'^\+?[0-9]{10,15}$'
+    USERNAME_REGEX = r'^[a-zA-Z0-9_.-]+$'
     MIN_PASSWORD_LENGTH = 8
+    MAX_USERNAME_LENGTH = 100
     MAX_NAME_LENGTH = 100
     MAX_EMAIL_LENGTH = 150
-    MAX_PHONE_LENGTH = 20
 
     @staticmethod
     def validate_email(email: str) -> str:
         if not email:
             raise ValueError("Email is required")
 
-        email = email.strip()
+        email = email.strip().lower()
 
         if len(email) > UserValidator.MAX_EMAIL_LENGTH:
             raise ValueError(f"Email must not exceed {UserValidator.MAX_EMAIL_LENGTH} characters")
@@ -35,32 +36,32 @@ class UserValidator:
         return email
 
     @staticmethod
-    def validate_phone(phone: str) -> str:
-        if not phone:
-            return None
+    def validate_username(username: str) -> str:
+        if not username:
+            raise ValueError("Username is required")
 
-        phone = phone.strip()
+        username = username.strip().lower()
 
-        if len(phone) > UserValidator.MAX_PHONE_LENGTH:
-            raise ValueError(f"Phone must not exceed {UserValidator.MAX_PHONE_LENGTH} characters")
+        if len(username) > UserValidator.MAX_USERNAME_LENGTH:
+            raise ValueError(f"Username must not exceed {UserValidator.MAX_USERNAME_LENGTH} characters")
 
-        if not re.match(UserValidator.PHONE_REGEX, phone):
-            raise ValueError("Invalid phone format")
+        if not re.match(UserValidator.USERNAME_REGEX, username):
+            raise ValueError("Username may only contain letters, numbers, dots, dashes and underscores")
 
-        return phone
+        return username
 
     @staticmethod
-    def validate_name(name: str) -> str:
+    def validate_name(name: str, field: str = "Name") -> List:
         if not name:
-            raise ValueError("Name is required")
+            return None
 
         name = name.strip()
 
         if len(name) == 0:
-            raise ValueError("Name cannot be empty")
+            raise ValueError(f"{field} cannot be empty")
 
         if len(name) > UserValidator.MAX_NAME_LENGTH:
-            raise ValueError(f"Name must not exceed {UserValidator.MAX_NAME_LENGTH} characters")
+            raise ValueError(f"{field} must not exceed {UserValidator.MAX_NAME_LENGTH} characters")
 
         return name
 
@@ -75,16 +76,40 @@ class UserValidator:
         return password
 
     @staticmethod
-    def validate_role(role: str) -> str:
-        if not role:
-            return "employee"
+    def validate_roles(roles) -> List[str]:
+        """Validate a list of role names against the seeded roles.
 
-        role = role.strip().lower()
+        Returns an empty list when no roles are provided; the caller
+        decides the default role.
+        """
+        if not roles:
+            return []
 
-        if role not in UserValidator.VALID_ROLES:
-            raise ValueError(f"Invalid role. Must be one of: {', '.join(UserValidator.VALID_ROLES)}")
+        if not isinstance(roles, list):
+            raise ValueError("Roles must be a list")
 
-        return role
+        cleaned = []
+        for role in roles:
+            role = str(role).strip().lower()
+            if not role:
+                continue
+            if role not in UserValidator.VALID_ROLES:
+                raise ValueError(
+                    f"Invalid role. Must be one of: {', '.join(UserValidator.VALID_ROLES)}"
+                )
+            cleaned.append(role)
+
+        return cleaned
+
+    @staticmethod
+    def validate_company_id(company_id) -> Any:
+        if company_id in (None, ""):
+            return None
+
+        try:
+            return int(company_id)
+        except (ValueError, TypeError):
+            raise ValueError("Company ID must be an integer")
 
     @staticmethod
     def validate_status(status: str) -> str:
@@ -120,11 +145,13 @@ class UserValidator:
             raise ValueError("User data is required")
 
         validated = {
-            "full_name": UserValidator.validate_name(data.get("full_name")),
+            "username": UserValidator.validate_username(data.get("username")),
             "email": UserValidator.validate_email(data.get("email")),
             "password": UserValidator.validate_password(data.get("password")),
-            "phone": UserValidator.validate_phone(data.get("phone")),
-            "role": UserValidator.validate_role(data.get("role")),
+            "first_name": UserValidator.validate_name(data.get("first_name"), "First name"),
+            "last_name": UserValidator.validate_name(data.get("last_name"), "Last name"),
+            "company_id": UserValidator.validate_company_id(data.get("company_id")),
+            "roles": UserValidator.validate_roles(data.get("roles")),
             "status": UserValidator.validate_status(data.get("status"))
         }
 
@@ -135,22 +162,29 @@ class UserValidator:
         if not data:
             raise ValueError("Update data is required")
 
-        validated = {}
+        user_validator = UserValidator
+        validated: Dict[str, Any] = {}
 
-        if "full_name" in data:
-            validated["full_name"] = UserValidator.validate_name(data["full_name"])
+        if "username" in data:
+            validated["username"] = user_validator.validate_username(data["username"])
 
         if "email" in data:
-            validated["email"] = UserValidator.validate_email(data["email"])
+            validated["email"] = user_validator.validate_email(data["email"])
 
-        if "phone" in data:
-            validated["phone"] = UserValidator.validate_phone(data["phone"])
+        if "first_name" in data:
+            validated["first_name"] = user_validator.validate_name(data["first_name"], "First name")
 
-        if "role" in data:
-            validated["role"] = UserValidator.validate_role(data["role"])
+        if "last_name" in data:
+            validated["last_name"] = user_validator.validate_name(data["last_name"], "Last name")
+
+        if "company_id" in data:
+            validated["company_id"] = user_validator.validate_company_id(data["company_id"])
+
+        if "roles" in data:
+            validated["roles"] = user_validator.validate_roles(data["roles"])
 
         if "status" in data:
-            validated["status"] = UserValidator.validate_status(data["status"])
+            validated["status"] = user_validator.validate_status(data["status"])
 
         if not validated:
             raise ValueError("No valid fields to update")

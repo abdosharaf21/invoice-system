@@ -116,16 +116,18 @@ def create_user():
     data = request.get_json()
     try:
         validated_data = {
-            "full_name": data.get("full_name"),
+            "username": data.get("username"),
             "email": data.get("email"),
             "password": data.get("password"),
-            "phone": data.get("phone"),
-            "role": data.get("role"),
+            "first_name": data.get("first_name"),
+            "last_name": data.get("last_name"),
+            "company_id": data.get("company_id"),
+            "roles": data.get("roles"),
             "status": data.get("status")
         }
 
-        if not validated_data["full_name"]:
-            return jsonify({"success": False, "message": "Full name is required"}), 400
+        if not validated_data["username"]:
+            return jsonify({"success": False, "message": "Username is required"}), 400
 
         if not validated_data["email"]:
             return jsonify({"success": False, "message": "Email is required"}), 400

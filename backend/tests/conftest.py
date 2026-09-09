@@ -18,11 +18,12 @@ def _make_user(user_id: int, email: str, role: str, name: str) -> User:
     """Factory helper that returns a realistic User model instance."""
     return User(
         id=user_id,
-        full_name=name,
+        username=f"user{user_id}",
         email=email,
         password_hash="$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        role=role,
-        status="active",
+        first_name=name,
+        roles=[role],
+        is_active=True,
         created_at=datetime.now(timezone.utc).isoformat(),
         updated_at=datetime.now(timezone.utc).isoformat(),
     )
@@ -159,9 +160,10 @@ def sample_user():
     """Sample user data dict."""
     return {
         "id": 1,
-        "full_name": "Test User",
+        "username": "testuser",
         "email": "test@example.com",
-        "phone": "+1234567890",
-        "role": "employee",
+        "first_name": "Test",
+        "last_name": "User",
+        "roles": ["viewer"],
         "status": "active",
     }
