@@ -22,15 +22,16 @@ class ImportBatchRepository:
             company_id=row[1],
             filename=row[2],
             file_type=row[3],
-            status=row[4],
-            total_rows=row[5],
-            processed_rows=row[6],
-            error_rows=row[7],
-            uploaded_by=row[8],
-            started_at=row[9],
-            finished_at=row[10],
-            created_at=row[11],
-            updated_at=row[12]
+            source_type=row[4],
+            status=row[5],
+            total_rows=row[6],
+            processed_rows=row[7],
+            error_rows=row[8],
+            uploaded_by=row[9],
+            started_at=row[10],
+            finished_at=row[11],
+            created_at=row[12],
+            updated_at=row[13]
         )
 
     def _row_to_error(self, row: tuple) -> ImportBatchError:
@@ -38,9 +39,11 @@ class ImportBatchRepository:
             id=row[0],
             batch_id=row[1],
             row_number=row[2],
-            error_message=row[3],
-            raw_data=row[4],
-            created_at=row[5]
+            field=row[3],
+            error_code=row[4],
+            error_message=row[5],
+            raw_data=row[6],
+            created_at=row[7]
         )
 
     def create(self, batch: ImportBatch) -> ImportBatch:
@@ -48,14 +51,15 @@ class ImportBatchRepository:
             try:
                 query = """
                     INSERT INTO import_batches
-                        (company_id, filename, file_type, status,
+                        (company_id, filename, file_type, source_type, status,
                          total_rows, processed_rows, error_rows, uploaded_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(query, (
                     batch.company_id,
                     batch.filename,
                     batch.file_type,
+                    batch.source_type,
                     batch.status,
                     batch.total_rows,
                     batch.processed_rows,
@@ -155,12 +159,15 @@ class ImportBatchRepository:
             try:
                 query = """
                     INSERT INTO import_batch_errors
-                        (batch_id, `row_number`, error_message, raw_data)
-                    VALUES (%s, %s, %s, %s)
+                        (batch_id, `row_number`, field, error_code,
+                         error_message, raw_data)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(query, (
                     error.batch_id,
                     error.row_number,
+                    error.field,
+                    error.error_code,
                     error.error_message,
                     error.raw_data
                 ))

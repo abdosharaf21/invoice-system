@@ -18,6 +18,8 @@ class ImportBatchError:
         id: Optional[int] = None,
         batch_id: Optional[int] = None,
         row_number: Optional[int] = None,
+        field: Optional[str] = None,
+        error_code: Optional[str] = None,
         error_message: Optional[str] = None,
         raw_data: Optional[str] = None,
         created_at: Optional[datetime] = None
@@ -25,6 +27,8 @@ class ImportBatchError:
         self.id = id
         self.batch_id = batch_id
         self.row_number = row_number
+        self.field = field
+        self.error_code = error_code
         self.error_message = error_message
         self.raw_data = raw_data
         self.created_at = created_at or datetime.now()
@@ -34,6 +38,8 @@ class ImportBatchError:
             "id": self.id,
             "batch_id": self.batch_id,
             "row_number": self.row_number,
+            "field": self.field,
+            "error_code": self.error_code,
             "error_message": self.error_message,
             "raw_data": self.raw_data,
             "created_at": self.created_at.isoformat() if self.created_at else None
@@ -45,6 +51,8 @@ class ImportBatchError:
             id=data.get("id"),
             batch_id=data.get("batch_id"),
             row_number=data.get("row_number"),
+            field=data.get("field"),
+            error_code=data.get("error_code"),
             error_message=data.get("error_message"),
             raw_data=data.get("raw_data"),
             created_at=_parse_datetime(data.get("created_at"))
@@ -68,6 +76,7 @@ class ImportBatch:
         company_id: Optional[int] = None,
         filename: Optional[str] = None,
         file_type: str = "csv",
+        source_type: str = "manual",
         status: str = "uploaded",
         total_rows: int = 0,
         processed_rows: int = 0,
@@ -82,6 +91,7 @@ class ImportBatch:
         self.company_id = company_id
         self.filename = filename
         self.file_type = file_type
+        self.source_type = source_type
         self.status = status
         self.total_rows = total_rows
         self.processed_rows = processed_rows
@@ -98,6 +108,7 @@ class ImportBatch:
             "company_id": self.company_id,
             "filename": self.filename,
             "file_type": self.file_type,
+            "source_type": self.source_type,
             "status": self.status,
             "total_rows": self.total_rows,
             "processed_rows": self.processed_rows,
@@ -116,6 +127,7 @@ class ImportBatch:
             company_id=data.get("company_id"),
             filename=data.get("filename"),
             file_type=data.get("file_type", "csv"),
+            source_type=data.get("source_type", "manual"),
             status=data.get("status", "uploaded"),
             total_rows=data.get("total_rows", 0),
             processed_rows=data.get("processed_rows", 0),

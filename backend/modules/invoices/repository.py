@@ -24,22 +24,23 @@ class InvoiceRepository:
     def _row_to_invoice(self, row: tuple) -> Invoice:
         return Invoice(
             id=row[0],
-            company_id=row[1],
-            import_batch_id=row[2],
-            invoice_number=row[3],
-            invoice_type=row[4],
-            invoice_date=row[5],
-            due_date=row[6],
-            currency=row[7],
-            counterparty_name=row[8],
-            counterparty_tax_id=row[9],
-            subtotal_amount=row[10],
-            discount_amount=row[11],
-            vat_amount=row[12],
-            total_amount=row[13],
-            status=row[14],
-            created_at=row[15],
-            updated_at=row[16]
+            uuid=row[1],
+            company_id=row[2],
+            import_batch_id=row[3],
+            invoice_number=row[4],
+            invoice_type=row[5],
+            invoice_date=row[6],
+            due_date=row[7],
+            currency=row[8],
+            counterparty_name=row[9],
+            counterparty_tax_id=row[10],
+            subtotal_amount=row[11],
+            discount_amount=row[12],
+            vat_amount=row[13],
+            total_amount=row[14],
+            status=row[15],
+            created_at=row[16],
+            updated_at=row[17]
         )
 
     def _row_to_item(self, row: tuple) -> InvoiceItem:
@@ -66,14 +67,15 @@ class InvoiceRepository:
             try:
                 query = """
                     INSERT INTO invoices
-                        (company_id, import_batch_id, invoice_number,
+                        (uuid, company_id, import_batch_id, invoice_number,
                          invoice_type, invoice_date, due_date, currency,
                          counterparty_name, counterparty_tax_id,
                          subtotal_amount, discount_amount, vat_amount,
                          total_amount, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(query, (
+                    invoice.uuid,
                     invoice.company_id,
                     invoice.import_batch_id,
                     invoice.invoice_number,
@@ -122,6 +124,23 @@ class InvoiceRepository:
         with self._database.connection() as conn, db_cursor(conn) as cursor:
             try:
                 cursor.execute("SELECT * FROM invoices WHERE id = %s", (invoice_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                invoice = self._row_to_invoice(row)
+                invoice.items = self._load_items(cursor, invoice.id)
+                return invoice
+            except mysql.connector.Error:
+                raise
+
+    def get_by_uuid(self, company_id: int, uuid: str) -> Optional[Invoice]:
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                query = """
+                    SELECT * FROM invoices
+                    WHERE company_id = %s AND uuid = %s
+                """
+                cursor.execute(query, (company_id, uuid))
                 row = cursor.fetchone()
                 if not row:
                     return None

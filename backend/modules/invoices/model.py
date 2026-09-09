@@ -87,6 +87,7 @@ class Invoice:
     def __init__(
         self,
         id: Optional[int] = None,
+        uuid: Optional[str] = None,
         company_id: Optional[int] = None,
         import_batch_id: Optional[int] = None,
         invoice_number: Optional[str] = None,
@@ -106,6 +107,7 @@ class Invoice:
         updated_at: Optional[datetime] = None
     ) -> None:
         self.id = id
+        self.uuid = uuid
         self.company_id = company_id
         self.import_batch_id = import_batch_id
         self.invoice_number = invoice_number
@@ -127,6 +129,7 @@ class Invoice:
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "uuid": self.uuid,
             "company_id": self.company_id,
             "import_batch_id": self.import_batch_id,
             "invoice_number": self.invoice_number,
@@ -150,6 +153,7 @@ class Invoice:
     def from_dict(cls, data: dict) -> "Invoice":
         return cls(
             id=data.get("id"),
+            uuid=data.get("uuid"),
             company_id=data.get("company_id"),
             import_batch_id=data.get("import_batch_id"),
             invoice_number=data.get("invoice_number"),
