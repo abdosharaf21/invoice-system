@@ -60,11 +60,11 @@ class ReconciliationRepository:
             run_id=row[1],
             source_type=row[2],
             entity_id=row[3],
-            error_type=row[4],
-            field=row[5],
-            accounting_value=row[6],
-            tax_authority_value=row[7],
-            difference=row[8],
+            field=row[4],
+            accounting_value=row[5],
+            tax_authority_value=row[6],
+            difference=row[7],
+            error_type=row[8],
             message=row[9],
             created_at=row[10]
         )
