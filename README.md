@@ -253,6 +253,87 @@ and are scoped to the authenticated user's company:
 - Period filters match the leading `YYYY-MM` of the date; invoices are
   assigned to the period of their accounting `invoice_date`.
 
+## Reconciliation reports
+
+Reports are read-only views over a **completed, persisted run** — they never
+re-trigger reconciliation, so a run can be reported on and exported as many
+times as needed without side effects.
+
+Endpoints require a valid token and the `admin`, `accountant` or `manager`
+role. Every endpoint is scoped to the authenticated user's company: a run
+belonging to another company returns `404 Not Found`, requests without a
+token return `401`, and non-allowed roles return `403`.
+
+### Run summary
+
+- `GET /api/reconciliation/runs/<id>/summary` — run metadata plus per-status
+  counts computed from the persisted result rows (SQL aggregation) and the
+  error table:
+
+```json
+{
+  "run": { "id": 1, "company_id": 1, "period": "2024-03",
+           "status": "completed", "invoice_count": 4, "tax_invoice_count": 3,
+           "matched_count": 1, "unmatched_count": 4, "error_count": 3,
+           "started_at": "...", "finished_at": "..." },
+  "summary": { "matched": 1, "mismatched": 1,
+               "missing_in_tax_authority": 1, "extra_in_tax_authority": 1,
+               "invalid": 1, "total_results": 5,
+               "unmatched": 4, "errors": 3 }
+}
+```
+
+`unmatched` = total results minus matched. `errors` = persisted error rows.
+
+### Results & errors reports
+
+- `GET /api/reconciliation/runs/<id>/results`
+- `GET /api/reconciliation/runs/<id>/errors`
+
+Both are **dual-mode**: passing any report parameter (pagination or a filter)
+returns a paginated envelope, while a bare request keeps the original list
+shape.
+
+Paginated envelope (default `page=1`, `page_size=50`, max 200):
+
+```json
+{
+  "items": [ /* result / error rows */ ],
+  "page": 1, "page_size": 50,
+  "total": 5, "total_pages": 1
+}
+```
+
+Results filters: `match_status` (one of the five statuses above), `uuid`
+(accounting side), `invoice_number`, `date_from`/`date_to`
+(`YYYY-MM-DD`, `date_from` must not be after `date_to`).
+
+Errors filters: `error_type`, `source_type` (`account`/`tax`).
+
+Results rows are enriched with the accounting invoice number, UUID and date,
+counterparty details, amounts, and the matched tax invoice's `internal_id` /
+UUID / amounts so a report is usable without extra lookups. Row ordering is
+deterministic by record id; invalid pagination or filter values return
+`400 Bad Request`.
+
+### Exports
+
+- `GET /api/reconciliation/runs/<id>/results/export?format=csv` (default) or `xlsx`
+- `GET /api/reconciliation/runs/<id>/errors/export?format=csv` or `xlsx`
+
+Exports stream the full (optionally filtered) dataset in batches, never
+loading it into memory. Files are downloaded with server-generated names
+(`reconciliation_results_<run_id>.csv`, `reconciliation_errors_<run_id>.xlsx`).
+In CSV, money is emitted as its exact decimal string and dates as ISO; in
+XLSX, money and dates are native numeric/date cells (no rounding).
+
+### Limitations
+
+- Reports reflect the state of the run at the time it finished; later
+  corrections to invoices or tax documents are not re-reflected.
+- Date filters apply to the accounting invoice date. Results with no
+  accounting side (`extra_in_tax_authority`) have null enrichment fields.
+
 ## Running tests
 
 ```bash
