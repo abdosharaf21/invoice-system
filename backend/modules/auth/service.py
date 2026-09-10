@@ -60,6 +60,9 @@ class AuthService:
         if not verify_password(password, user.password_hash):
             raise UnauthorizedException("Invalid email or password")
 
+        if not user.is_active:
+            raise UnauthorizedException("Invalid email or password")
+
         access_token = create_access_token_for_user(user)
         refresh_token = create_refresh_token(identity=str(user.id))
 

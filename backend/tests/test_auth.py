@@ -54,6 +54,29 @@ def test_me_with_valid_token(client, admin_token, mock_repos):
     assert data["data"]["email"] == "admin@test.com"
 
 
+def test_login_rejects_inactive_user(client, mock_repos):
+    """API login must reject a deactivated account with a generic 401."""
+    import bcrypt
+
+    inactive = User(
+        id=1,
+        username="inactive",
+        email="inactive@test.com",
+        password_hash=bcrypt.hashpw(b"password123", bcrypt.gensalt()).decode(),
+        first_name="Inactive",
+        last_name="User",
+        roles=["admin"],
+        is_active=False,
+    )
+    mock_repos.user_repo.get_by_email.return_value = inactive
+    response = client.post(
+        "/api/auth/login",
+        data=json.dumps({"email": "inactive@test.com", "password": "password123"}),
+        content_type="application/json",
+    )
+    assert response.status_code == 401
+
+
 def test_users_list_requires_admin(client, employee_token):
     """Non-admin users should not access user list."""
     response = client.get(
