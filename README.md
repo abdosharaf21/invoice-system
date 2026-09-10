@@ -334,6 +334,115 @@ XLSX, money and dates are native numeric/date cells (no rounding).
 - Date filters apply to the accounting invoice date. Results with no
   accounting side (`extra_in_tax_authority`) have null enrichment fields.
 
+## Frontend (Phase 6)
+
+A framework-free single-page application (`frontend/`) that consumes the Flask
+APIs above. It is plain HTML/CSS/ES modules — no build step, no bundler. The
+backend remains the single source of truth: the frontend performs no business
+calculations and matches the API envelopes exactly as implemented.
+
+### Tech stack & structure
+
+- Vanilla ES modules (`<script type="module">`), CSS custom properties,
+  logical properties (RTL-ready), responsive enterprise shell.
+- No frameworks, no charting library (status distribution is CSS bars).
+
+```
+frontend/
+  index.html              SPA root (#app, toast stack, noscript)
+  package.json            "npm test" → node --test
+  assets/css/             reset, variables (design tokens), base, layout, components
+  assets/js/
+    app.js                Bootstrap: hash router, auth guard, shell
+    config.js             API base resolution, limits, accepted uploads
+    config/routes.js      Route table, RBAC gating, sidebar sections
+    api/client.js         fetch client: token attach, refresh+retry, downloads
+    auth/                 Login endpoints + token/user store
+    services/             imports, reconciliation, users API clients
+    utils/                escape, format, validation, DOM helpers
+    components/           toast, modal, tabs, pagination, report panels/tabs
+    pages/                login, dashboard, imports, import detail,
+                          reconciliation, run detail, reports, users, account, errors
+  test/                   node:test suite (pure-logic, DOM-stubbed)
+```
+
+### Running the frontend
+
+The app is static — serve the directory and open it:
+
+```bash
+cd frontend
+python3 -m http.server 8080 --directory .
+```
+
+By default the JS targets `http://localhost:5001` (the Flask backend). Override
+at runtime without rebuilding: open `http://localhost:8080/?api=http://host:port`.
+
+Authentication gates the UI on the same claims as the backend: the sidebar
+only shows sections the current role is allowed to use, anonymous users are
+routed to the login page, and a forbidden route renders a 403 screen.
+`viewer` accounts get a read-only dashboard; operators (`admin`, `accountant`,
+`manager`) get imports, reconciliation and reports; `admin` alone manages
+users.
+
+### Pages
+
+- `#/login` — sign in (email + password), stores access/refresh tokens.
+- `#/dashboard` — KPIs aggregated from the real reconciliation runs plus the
+  latest completed run's status distribution; read-only notice for `viewer`.
+- `#/imports` — drop-zone upload of CSV/XLSX accounting files, progress, and
+  the batch outcome (`POST /api/imports` returns `{batch, errors}`).
+- `#/imports/:id` — batch detail with per-row errors.
+- `#/reconciliation` — start a run for a `YYYY-MM` period (synchronous;
+  redirects to the run detail).
+- `#/reconciliation/:id` — run metadata, summary counts, CSS status bars and
+  the shared Results/Errors panels with filters, pagination and export.
+- `#/reports` — run picker over the same shared Results/Errors panels.
+- `#/users` — admin-only user CRUD (create, edit, activate/deactivate, reset
+  password, delete) with destructive-action confirmation.
+- `#/account` — profile and change-password form.
+- 403/404 screens for forbidden/unknown routes.
+
+### Reports, filters, pagination & exports
+
+Results and Errors are one shared component (`components/reportTabs.js`)
+used by both the run detail and the reports page — no duplicated tables.
+Both panels stay server-side: filters (`match_status`, `uuid`,
+`invoice_number`, `date_from`/`date_to` for results; `error_type`,
+`source_type` for errors) and pagination (`page`, `page_size`) are sent to
+the API, never applied in JavaScript. CSV and XLSX exports of the fully
+filtered dataset are streamed as downloads with server-generated filenames.
+
+### Frontend tests
+
+```bash
+cd frontend && npm test        # node:test, no external dependencies
+```
+
+Covers validation, formatting/labels, HTML escaping, the auth store and role
+helpers, the API client (error envelopes, refresh-and-retry, query building),
+route resolution plus RBAC gating, and report table/pagination rendering.
+
+### Run a frontend + backend integration
+
+```bash
+cp .env.example .env           # set DB creds; DB schema via migrations (below)
+.venv/bin/python backend/app.py   # API on 0.0.0.0:5001
+cd frontend && python3 -m http.server 8080 --directory .
+# open http://localhost:8080/ and sign in with an admin/operator account
+```
+
+### Known limitations
+
+- The SPA is verified against the API contract and unit-tested; interactive
+  browser automation (drag/drop, canvas-free CSS bars) is covered by the
+  functional unit suite, not by a browser E2E harness.
+- Reports reflect the state of the run at the time it finished; later
+  corrections to invoices or tax documents are not re-reflected in the UI.
+- `viewer` accounts cannot reach reconciliation/report endpoints because the
+  backend requires the `admin`/`accountant`/`manager` roles; the UI hides
+  those sections and the backend enforces them.
+
 ## Running tests
 
 ```bash

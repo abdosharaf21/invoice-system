@@ -1,0 +1,155 @@
+/* ===========================================================================
+   Design tokens — single source of truth for the whole application.
+   Professional accounting + corporate tax language: deep institutional blues,
+   muted compliance green, restrained surfaces, no decorative gradients.
+   =========================================================================== */
+
+:root {
+  /* ---- Brand palette ---- */
+  --color-primary: #1f4e79;          /* institutional blue */
+  --color-primary-dark: #183c5d;
+  --color-primary-darker: #122e47;
+  --color-accent: #16724c;           /* compliance green */
+  --color-accent-dark: #0f5c3d;
+
+  --color-surface: #ffffff;
+  --color-surface-alt: #f6f8fa;      /* zebra rows, panels */
+  --color-surface-raised: #ffffff;
+
+  --color-bg: #eef1f4;
+  --color-border: #d5dce4;
+  --color-border-strong: #b7c2cf;
+
+  /* ---- Text ---- */
+  --color-text: #17212b;
+  --color-text-secondary: #46545f;
+  --color-text-muted: #6b7887;
+  --color-text-inverse: #ffffff;
+
+  /* ---- Semantic ---- */
+  --color-link: #1f5c8b;
+  --color-focus: #2f7ec4;
+
+  --color-success: #14643a;
+  --color-success-bg: #e7f4ec;
+  --color-success-border: #b2ddc2;
+
+  --color-warning: #8a5a00;
+  --color-warning-bg: #fff4df;
+  --color-warning-border: #ecd6a0;
+
+  --color-danger: #a32222;
+  --color-danger-bg: #fbecec;
+  --color-danger-border: #ebb9b9;
+
+  --color-info: #1f5c8b;
+  --color-info-bg: #e9f1f8;
+  --color-info-border: #bcd5e8;
+
+  /* ---- Status: reconciliation results ---- */
+  --status-matched-bg: #e7f4ec;   --status-matched-text: #14643a; --status-matched-border: #a9d9bd;
+  --status-mismatched-bg: #fff4df; --status-mismatched-text: #8a5a00; --status-mismatched-border: #ecd6a0;
+  --status-missing-bg: #fdece1;   --status-missing-text: #8f4a10;   --status-missing-border: #f0c9a8;
+  --status-extra-bg: #e9ecf9;     --status-extra-text: #3b4287;     --status-extra-border: #c2c9ea;
+  --status-invalid-bg: #fbecec;   --status-invalid-text: #a32222;   --status-invalid-border: #ebb9b9;
+
+  /* ---- Status: runs / batches ---- */
+  --status-pending-bg: #eef1f4;    --status-pending-text: #46545f;    --status-pending-border: #cbd3dc;
+  --status-running-bg: #e9f1f8;    --status-running-text: #1f5c8b;    --status-running-border: #bcd5e8;
+  --status-completed-bg: #e7f4ec;  --status-completed-text: #14643a;  --status-completed-border: #a9d9bd;
+  --status-failed-bg: #fbecec;     --status-failed-text: #a32222;     --status-failed-border: #ebb9b9;
+  --status-uploaded-bg: #eef1f4;   --status-uploaded-text: #46545f;   --status-uploaded-border: #cbd3dc;
+  --status-processing-bg: #e9f1f8; --status-processing-text: #1f5c8b; --status-processing-border: #bcd5e8;
+
+  /* ---- Buttons ---- */
+  --btn-primary-bg: var(--color-primary);
+  --btn-primary-text: #ffffff;
+  --btn-primary-hover: var(--color-primary-dark);
+
+  --btn-secondary-bg: #ffffff;
+  --btn-secondary-text: #33414d;
+  --btn-secondary-border: var(--color-border-strong);
+  --btn-secondary-hover: #eef2f6;
+
+  --btn-danger-bg: #ffffff;
+  --btn-danger-text: var(--color-danger);
+  --btn-danger-border: var(--color-danger-border);
+
+  --btn-ghost-text: #33414d;
+  --btn-ghost-hover: #eef2f6;
+
+  --btn-disabled-bg: #e4e8ec;
+  --btn-disabled-text: #8b96a3;
+
+  /* ---- Typography ---- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono",
+    Consolas, "Liberation Mono", Menlo, monospace;
+
+  --text-xs: 0.75rem;   /* 12px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-base: 0.875rem;/* 14px — default density for enterprise data */
+  --text-lg: 1rem;
+  --text-xl: 1.125rem;
+  --text-2xl: 1.5rem;
+
+  --tracking-tight: -0.011em;
+
+  /* ---- Spacing scale (4px base) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* ---- Radii ---- */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+
+  /* ---- Shadows (restrained) ---- */
+  --shadow-xs: 0 1px 2px rgba(15, 27, 40, 0.06);
+  --shadow-sm: 0 1px 3px rgba(15, 27, 40, 0.1);
+  --shadow-md: 0 4px 12px rgba(15, 27, 40, 0.12);
+  --shadow-lg: 0 8px 24px rgba(15, 27, 40, 0.16);
+
+  /* ---- Layout ---- */
+  --sidebar-width: 232px;
+  --sidebar-collapsed-width: 64px;
+  --header-height: 56px;
+  --content-max: 1600px;
+
+  /* ---- Motion ---- */
+  --transition-fast: 120ms;
+  --transition-base: 180ms;
+
+  /* ---- Z-index ---- */
+  --z-header: 40;
+  --z-overlay: 60;
+  --z-modal: 70;
+  --z-toast: 80;
+  --z-dropdown: 50;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark mode is deliberately conservative: enterprise surfaces keep a
+       tinted slate, not pure black, to preserve readability. */
+    --color-bg: #10161d;
+    --color-surface: #182130;
+    --color-surface-alt: #1e2837;
+    --color-surface-raised: #202b3c;
+    --color-border: #2b3949;
+    --color-border-strong: #3b4c5f;
+    --color-text: #e6edf4;
+    --color-text-secondary: #aebccb;
+    --color-text-muted: #7e8ea0;
+    --btn-secondary-hover: #243140;
+    --btn-ghost-hover: #243140;
+  }
+}

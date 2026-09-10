@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>E-Invoice &amp; Reconciliation System</title>
+  <link rel="stylesheet" href="assets/css/reset.css" />
+  <link rel="stylesheet" href="assets/css/variables.css" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/layout.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+</head>
+<body>
+  <!-- Single SPA root. All views render into #app via the hash router. -->
+  <div id="app">
+    <div class="state-block" aria-live="polite">
+      <div class="spinner" role="status" aria-label="Loading"></div>
+      <div>Loading application…</div>
+    </div>
+  </div>
+  <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
+  <noscript>
+    <div class="alert alert--error" style="margin: 1rem; max-width: 640px;">
+      This application requires JavaScript to run.
+    </div>
+  </noscript>
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>

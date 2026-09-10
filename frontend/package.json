@@ -1,0 +1,10 @@
+{
+  "name": "e-invoice-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "E-Invoice & Reconciliation System — SPA frontend (no framework, no build step).",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}
