@@ -24,11 +24,13 @@ class FakeCursor:
     def __init__(self, fetch_results=None):
         self.fetch_results = list(fetch_results or [])
         self.queries = []
+        self.calls = []
         self.lastrowid = 1
         self.rowcount = 1
 
     def execute(self, query, params=None):
         self.queries.append(query)
+        self.calls.append((query, params))
         return None
 
     def fetchone(self):
@@ -180,3 +182,72 @@ def test_finish_run_transaction_rolls_back_on_error():
 
     assert database.conn.rolled_back is True
     assert database.conn.committed is False
+
+
+_RESULT_ROW = (
+    1, 7, 10, 20, c.MATCHED, 0.0, None, datetime(2024, 6, 1),
+    "INV-100", "uuid-100", datetime(2024, 3, 1).date(), "EGP",
+    "Acme Corp", "12345",
+    None, None, None,
+    "uuid-100", "T-100", datetime(2024, 3, 1, 9, 0, 0), "EGP",
+    None, None, None, None,
+)
+
+
+def test_count_results_binds_filters_as_parameters():
+    database = FakeDatabase(fetch_results=[[5]])
+    repo = ReconciliationRepository(database)
+    total = repo.count_results(7, {
+        "match_status": c.MISMATCHED,
+        "uuid": "abc",
+        "invoice_number": "INV-1",
+        "date_from": "2024-03-01",
+        "date_to": "2024-03-31",
+    })
+
+    assert total == 5
+    query, params = database.conn._cursor.calls[0]
+    assert "COUNT(*)" in query
+    assert params == [7, c.MISMATCHED, "abc", "abc", "INV-1", "2024-03-01", "2024-03-31"]
+    assert params.count("abc") == 2
+
+
+def test_list_results_report_applies_matching_and_pagination():
+    database = FakeDatabase(fetch_results=[[_RESULT_ROW]])
+    repo = ReconciliationRepository(database)
+    rows = repo.list_results_report(7, limit=10, offset=20, filters={
+        "match_status": c.MATCHED,
+    })
+
+    assert rows[0]["account_invoice_number"] == "INV-100"
+    assert rows[0]["account_uuid"] == "uuid-100"
+    assert rows[0]["tax_internal_id"] == "T-100"
+    query, params = database.conn._cursor.calls[0]
+    assert "ORDER BY r.id" in query
+    assert "LIMIT %s OFFSET %s" in query
+    assert params[-2:] == [10, 20]
+
+
+def test_count_errors_and_list_bind_error_filters():
+    database = FakeDatabase(fetch_results=[[2]])
+    repo = ReconciliationRepository(database)
+    total_errors = repo.count_errors(7, {
+        "error_type": c.E_TOTAL_AMOUNT_MISMATCH,
+        "source_type": "account",
+    })
+    assert total_errors == 2
+    query, params = database.conn._cursor.calls[0]
+    assert params == [7, c.E_TOTAL_AMOUNT_MISMATCH, "account"]
+
+
+def test_iter_results_report_streams_in_batches():
+    database = FakeDatabase(fetch_results=[
+        [_RESULT_ROW, _RESULT_ROW],   # full first batch (2 rows)
+        [_RESULT_ROW],                # partial second batch (1 row)
+    ])
+    repo = ReconciliationRepository(database)
+    rows = list(repo.iter_results_report(7, batch_size=2))
+    assert len(rows) == 3
+    assert len(database.conn._cursor.calls) == 2
+    query, params = database.conn._cursor.calls[1]
+    assert params[-2:] == [2, 2]
