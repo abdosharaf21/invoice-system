@@ -16,10 +16,12 @@ never reported successful unless every result row was persisted atomically.
 """
 
 import logging
+import math
 from decimal import Decimal
 from typing import List, Optional
 
 from backend.modules.reconciliation import contract as c
+from backend.modules.reconciliation import export as report_export
 from backend.modules.reconciliation.engine import (
     ReconcileOutcome,
     is_valid_period,
@@ -163,6 +165,119 @@ class ReconciliationService:
         if self.get_run(run_id, company_id) is None:
             return None
         return self._recon_repo.list_errors(run_id)
+
+    # ------------------------------------------------------------------
+    # Reports
+    # ------------------------------------------------------------------
+
+    def get_report_summary(self, run_id: int, company_id: int) -> Optional[dict]:
+        """Structured summary of a run, scoped to a company.
+
+        Counts come from the persisted run's result rows (SQL aggregation)
+        and the persisted error table — reconciliation is never re-run to
+        produce the summary.
+        """
+        run = self.get_run(run_id, company_id)
+        if run is None:
+            return None
+        statuses = self._recon_repo.get_results_summary(run_id)
+        counts = {status: int(statuses.get(status, 0)) for status in c.RESULT_STATUSES}
+        total = sum(counts.values())
+        return {
+            "run": run.to_dict(),
+            "summary": {
+                **counts,
+                "total_results": total,
+                "unmatched": total - counts[c.MATCHED],
+                "errors": self._recon_repo.count_errors(run_id),
+            },
+        }
+
+    def paginate_results(
+        self,
+        run_id: int,
+        company_id: int,
+        page: int,
+        page_size: int,
+        filters: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """Paginated, filtered results for a run, scoped to a company."""
+        if self.get_run(run_id, company_id) is None:
+            return None
+        query_filters = filters or {}
+        total = self._recon_repo.count_results(run_id, query_filters)
+        offset = (page - 1) * page_size
+        items = self._recon_repo.list_results_report(
+            run_id, limit=page_size, offset=offset, filters=query_filters
+        )
+        return self._envelope(items, total, page, page_size)
+
+    def paginate_errors(
+        self,
+        run_id: int,
+        company_id: int,
+        page: int,
+        page_size: int,
+        filters: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """Paginated, filtered errors for a run, scoped to a company."""
+        if self.get_run(run_id, company_id) is None:
+            return None
+        query_filters = filters or {}
+        total = self._recon_repo.count_errors(run_id, query_filters)
+        offset = (page - 1) * page_size
+        items = self._recon_repo.list_errors_report(
+            run_id, limit=page_size, offset=offset, filters=query_filters
+        )
+        return self._envelope(items, total, page, page_size)
+
+    def export_results(
+        self,
+        run_id: int,
+        company_id: int,
+        fmt: str,
+        filters: Optional[dict] = None,
+    ) -> Optional[tuple]:
+        """Export a run's results (filtered) as csv/xlsx, scoped to a company.
+
+        Returns ``(filename, mimetype, payload)`` or None when the run is not
+        accessible. The full filtered dataset is streamed from the repository
+        in batches.
+        """
+        if self.get_run(run_id, company_id) is None:
+            return None
+        rows = self._recon_repo.iter_results_report(run_id, filters or {})
+        payload, mimetype, extension = report_export.build_file("results", rows, fmt)
+        return f"reconciliation_results_{run_id}.{extension}", mimetype, payload
+
+    def export_errors(
+        self,
+        run_id: int,
+        company_id: int,
+        fmt: str,
+        filters: Optional[dict] = None,
+    ) -> Optional[tuple]:
+        """Export a run's errors (filtered) as csv/xlsx, scoped to a company."""
+        if self.get_run(run_id, company_id) is None:
+            return None
+        rows = self._recon_repo.iter_errors_report(run_id, filters or {})
+        payload, mimetype, extension = report_export.build_file("errors", rows, fmt)
+        return f"reconciliation_errors_{run_id}.{extension}", mimetype, payload
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _envelope(items: list, total: int, page: int, page_size: int) -> dict:
+        total_pages = math.ceil(total / page_size) if total > 0 else 0
+        return {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+        }
 
     # ------------------------------------------------------------------
     # Internal helpers
