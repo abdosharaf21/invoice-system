@@ -1,7 +1,7 @@
 """Reconciliation repository for database operations on runs, results and errors."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 import mysql.connector
 
@@ -12,6 +12,64 @@ from backend.modules.reconciliation.model import (
     ReconciliationRun,
 )
 from backend.shared.database import db_cursor
+
+# Columns for the enriched results report (paginated API + exports). The
+# select is shared so filtering, ordering and serialization are identical
+# everywhere the report is surfaced.
+_RESULTS_REPORT_COLUMNS = """
+    r.id, r.run_id, r.account_invoice_id, r.tax_invoice_id,
+    r.match_status, r.discrepancy_amount, r.notes, r.created_at,
+    i.invoice_number, i.uuid, i.invoice_date, i.currency,
+    i.counterparty_name, i.counterparty_tax_id,
+    i.subtotal_amount, i.vat_amount, i.total_amount,
+    t.uuid, t.internal_id, t.issue_datetime, t.currency,
+    t.total_sales, t.net_amount, t.vat_amount, t.total_amount
+"""
+
+
+def _build_results_where(filters: dict) -> tuple:
+    """Build the parameterized WHERE clause for the results report.
+
+    Only filters with a value contribute to the clause; every value is bound
+    as a parameter so the SQL stays injection-safe.
+    """
+    parts = ["r.run_id = %s"]
+    params = [filters["run_id"]]
+    status = (filters.get("match_status") or "").strip()
+    if status:
+        parts.append("r.match_status = %s")
+        params.append(status)
+    uuid = (filters.get("uuid") or "").strip()
+    if uuid:
+        parts.append("(i.uuid = %s OR t.uuid = %s)")
+        params.extend([uuid, uuid])
+    invoice_number = (filters.get("invoice_number") or "").strip()
+    if invoice_number:
+        parts.append("i.invoice_number = %s")
+        params.append(invoice_number)
+    date_from = filters.get("date_from")
+    if date_from:
+        parts.append("i.invoice_date >= %s")
+        params.append(date_from)
+    date_to = filters.get("date_to")
+    if date_to:
+        parts.append("i.invoice_date <= %s")
+        params.append(date_to)
+    return " AND ".join(parts), params
+
+
+def _build_errors_where(filters: dict) -> tuple:
+    parts = ["e.run_id = %s"]
+    params = [filters["run_id"]]
+    error_type = (filters.get("error_type") or "").strip()
+    if error_type:
+        parts.append("e.error_type = %s")
+        params.append(error_type)
+    source_type = (filters.get("source_type") or "").strip()
+    if source_type:
+        parts.append("e.source_type = %s")
+        params.append(source_type)
+    return " AND ".join(parts), params
 
 
 class ReconciliationRepository:
@@ -381,6 +439,214 @@ class ReconciliationRepository:
                 return {row[0]: int(row[1]) for row in cursor.fetchall()}
             except mysql.connector.Error:
                 raise
+
+    def _row_to_result_report(self, row: tuple) -> dict:
+        return {
+            "id": row[0],
+            "run_id": row[1],
+            "account_invoice_id": row[2],
+            "tax_invoice_id": row[3],
+            "match_status": row[4],
+            "discrepancy_amount": row[5],
+            "notes": row[6],
+            "created_at": row[7],
+            "account_invoice_number": row[8],      # invoices.invoice_number
+            "account_uuid": row[9],                # invoices.uuid
+            "account_invoice_date": row[10],       # invoices.invoice_date
+            "account_currency": row[11],           # invoices.currency
+            "counterparty_name": row[12],
+            "counterparty_tax_id": row[13],
+            "accounting_subtotal": row[14],
+            "accounting_vat": row[15],
+            "accounting_total": row[16],
+            "tax_uuid": row[17],                   # tax_invoices.uuid
+            "tax_internal_id": row[18],            # tax_invoices.internal_id
+            "tax_issue_datetime": row[19],         # tax_invoices.issue_datetime
+            "tax_currency": row[20],               # tax_invoices.currency
+            "tax_total_sales": row[21],
+            "tax_net_amount": row[22],
+            "tax_vat_amount": row[23],
+            "tax_total_amount": row[24],
+        }
+
+    def _row_to_error_report(self, row: tuple) -> dict:
+        return {
+            "id": row[0],
+            "run_id": row[1],
+            "source_type": row[2],
+            "entity_id": row[3],
+            "field": row[4],
+            "accounting_value": row[5],
+            "tax_authority_value": row[6],
+            "difference": row[7],
+            "error_type": row[8],
+            "message": row[9],
+            "created_at": row[10],
+        }
+
+    def count_results(self, run_id: int, filters: Optional[dict] = None) -> int:
+        """Total result rows for a run matching the given filters."""
+        query_filters = dict(filters or {})
+        query_filters["run_id"] = run_id
+        clause, params = _build_results_where(query_filters)
+        query = """
+            SELECT COUNT(*)
+            FROM reconciliation_results r
+            LEFT JOIN invoices i ON i.id = r.account_invoice_id
+            LEFT JOIN tax_invoices t ON t.id = r.tax_invoice_id
+            WHERE {}
+        """.format(clause)
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                return int(row[0]) if row else 0
+            except mysql.connector.Error:
+                raise
+
+    def list_results_report(
+        self,
+        run_id: int,
+        limit: int,
+        offset: int,
+        filters: Optional[dict] = None,
+    ) -> List[dict]:
+        """One paginated page of enriched result rows for a run."""
+        query_filters = dict(filters or {})
+        query_filters["run_id"] = run_id
+        clause, params = _build_results_where(query_filters)
+        query = """
+            SELECT {columns}
+            FROM reconciliation_results r
+            LEFT JOIN invoices i ON i.id = r.account_invoice_id
+            LEFT JOIN tax_invoices t ON t.id = r.tax_invoice_id
+            WHERE {clause}
+            ORDER BY r.id
+            LIMIT %s OFFSET %s
+        """.format(columns=_RESULTS_REPORT_COLUMNS, clause=clause)
+        params = params + [limit, offset]
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(query, params)
+                return [self._row_to_result_report(row) for row in cursor.fetchall()]
+            except mysql.connector.Error:
+                raise
+
+    def iter_results_report(
+        self,
+        run_id: int,
+        filters: Optional[dict] = None,
+        batch_size: int = 500,
+    ) -> Iterator[dict]:
+        """Stream all enriched result rows for a run in bounded batches.
+
+        Used by exports so a large run is never fetched into memory whole.
+        Ordering is deterministic (by result id).
+        """
+        query_filters = dict(filters or {})
+        query_filters["run_id"] = run_id
+        clause, params = _build_results_where(query_filters)
+        query = """
+            SELECT {columns}
+            FROM reconciliation_results r
+            LEFT JOIN invoices i ON i.id = r.account_invoice_id
+            LEFT JOIN tax_invoices t ON t.id = r.tax_invoice_id
+            WHERE {clause}
+            ORDER BY r.id
+            LIMIT %s OFFSET %s
+        """.format(columns=_RESULTS_REPORT_COLUMNS, clause=clause)
+        offset = 0
+        while True:
+            with self._database.connection() as conn, db_cursor(conn) as cursor:
+                try:
+                    cursor.execute(query, params + [batch_size, offset])
+                    rows = cursor.fetchall()
+                except mysql.connector.Error:
+                    raise
+            if not rows:
+                break
+            for row in rows:
+                yield self._row_to_result_report(row)
+            if len(rows) < batch_size:
+                break
+            offset += batch_size
+
+    def count_errors(self, run_id: int, filters: Optional[dict] = None) -> int:
+        """Total error rows for a run matching the given filters."""
+        query_filters = dict(filters or {})
+        query_filters["run_id"] = run_id
+        clause, params = _build_errors_where(query_filters)
+        query = """
+            SELECT COUNT(*)
+            FROM reconciliation_errors e
+            WHERE {}
+        """.format(clause)
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                return int(row[0]) if row else 0
+            except mysql.connector.Error:
+                raise
+
+    def list_errors_report(
+        self,
+        run_id: int,
+        limit: int,
+        offset: int,
+        filters: Optional[dict] = None,
+    ) -> List[dict]:
+        """One paginated page of error rows for a run."""
+        query_filters = dict(filters or {})
+        query_filters["run_id"] = run_id
+        clause, params = _build_errors_where(query_filters)
+        query = """
+            SELECT *
+            FROM reconciliation_errors e
+            WHERE {clause}
+            ORDER BY e.id
+            LIMIT %s OFFSET %s
+        """.format(clause=clause)
+        params = params + [limit, offset]
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(query, params)
+                return [self._row_to_error_report(row) for row in cursor.fetchall()]
+            except mysql.connector.Error:
+                raise
+
+    def iter_errors_report(
+        self,
+        run_id: int,
+        filters: Optional[dict] = None,
+        batch_size: int = 500,
+    ) -> Iterator[dict]:
+        """Stream all error rows for a run in bounded batches (for exports)."""
+        query_filters = dict(filters or {})
+        query_filters["run_id"] = run_id
+        clause, params = _build_errors_where(query_filters)
+        query = """
+            SELECT *
+            FROM reconciliation_errors e
+            WHERE {clause}
+            ORDER BY e.id
+            LIMIT %s OFFSET %s
+        """.format(clause=clause)
+        offset = 0
+        while True:
+            with self._database.connection() as conn, db_cursor(conn) as cursor:
+                try:
+                    cursor.execute(query, params + [batch_size, offset])
+                    rows = cursor.fetchall()
+                except mysql.connector.Error:
+                    raise
+            if not rows:
+                break
+            for row in rows:
+                yield self._row_to_error_report(row)
+            if len(rows) < batch_size:
+                break
+            offset += batch_size
 
     def add_error(self, error: ReconciliationError) -> ReconciliationError:
         with self._database.connection() as conn, db_cursor(conn) as cursor:
