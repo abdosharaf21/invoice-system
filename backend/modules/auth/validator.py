@@ -6,6 +6,8 @@ Input validation for authentication endpoints.
 import re
 from typing import Optional
 
+from backend.shared.security import MIN_PASSWORD_LENGTH
+
 
 class AuthValidator:
     """Validates authentication request data."""
@@ -29,8 +31,11 @@ class AuthValidator:
 
         if not password:
             errors.append(("password", "Password is required"))
-        elif len(password) < 6:
-            errors.append(("password", "Password must be at least 6 characters"))
+        elif len(password) < MIN_PASSWORD_LENGTH:
+            errors.append((
+                "password",
+                f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
+            ))
 
         if errors:
             error_msg = "; ".join(f"{f}: {m}" for f, m in errors)

@@ -71,4 +71,15 @@ describe("role gating", () => {
     authStore.setUser({ roles: ["admin"] });
     assert.equal(canSeeSection({ title: "Administration", minRoles: ["admin"] }), true);
   });
+
+  it("shows the monitoring section to admins and managers only", () => {
+    authStore.setUser({ roles: ["admin"] });
+    assert.equal(canSeeSection({ title: "Monitoring", minRoles: ["admin", "manager"] }), true);
+    authStore.setUser({ roles: ["manager"] });
+    assert.equal(canSeeSection({ title: "Monitoring", minRoles: ["admin", "manager"] }), true);
+    authStore.setUser({ roles: ["accountant"] });
+    assert.equal(canSeeSection({ title: "Monitoring", minRoles: ["admin", "manager"] }), false);
+    authStore.setUser({ roles: ["viewer"] });
+    assert.equal(canSeeSection({ title: "Monitoring", minRoles: ["admin", "manager"] }), false);
+  });
 });

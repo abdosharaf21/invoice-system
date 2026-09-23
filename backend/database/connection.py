@@ -1,6 +1,7 @@
 """Database connection pool manager for MySQL."""
 
 import logging
+import threading
 from contextlib import contextmanager
 from typing import Generator, Optional
 
@@ -11,6 +12,11 @@ from mysql.connector.pooling import MySQLConnectionPool, PoolError
 from backend.database.config import DatabaseConfig, get_database_config
 
 logger = logging.getLogger(__name__)
+
+# Serializes pool creation/replenishment so concurrent borrowers can never
+# mutate the pool at the same time (a fresh connection added while another
+# thread also replenishes would leave the pool with the wrong size).
+_pool_lock = threading.Lock()
 
 
 class DatabaseError(Exception):
@@ -48,7 +54,8 @@ class Database:
         """
         try:
             pool_args = self._config.to_pool_args()
-            self._pool = MySQLConnectionPool(**pool_args)
+            with _pool_lock:
+                self._pool = MySQLConnectionPool(**pool_args)
             logger.info(
                 "Connection pool '%s' created with size %d",
                 self._config.pool_name,
@@ -106,11 +113,17 @@ class Database:
             pass
 
     def _replenish_pool(self) -> None:
-        """Replace a dropped connection to maintain pool size."""
+        """Replace a dropped connection to maintain pool size.
+
+        ``MySQLConnection`` accepts connection arguments only; the pool-only
+        options (``pool_name``, ``pool_size``, ``pool_reset_session``) are
+        dropped so failing pool connections can actually be replenished.
+        """
         try:
-            pool_args = self._config.to_pool_args()
-            conn = MySQLConnection(**pool_args)
-            self._pool.add_connection(conn)
+            conn_args = self._config.to_connection_args()
+            with _pool_lock:
+                conn = MySQLConnection(**conn_args)
+                self._pool.add_connection(conn)
             logger.info("Pool connection replenished")
         except (PoolError, mysql.connector.Error) as e:
             logger.warning("Failed to replenish pool connection: %s", e)

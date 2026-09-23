@@ -79,8 +79,8 @@ class BaseConfig:
     DB_POOL_NAME = os.environ.get("DB_POOL_NAME", "invoice_pool")
     DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "5"))
 
-    JWT_ACCESS_TOKEN_EXPIRES = 3600
-    JWT_REFRESH_TOKEN_EXPIRES = 2592000  # 30 days
+    JWT_ACCESS_TOKEN_EXPIRES = int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRES", "3600"))
+    JWT_REFRESH_TOKEN_EXPIRES = int(os.environ.get("JWT_REFRESH_TOKEN_EXPIRES", "2592000"))
     JWT_TOKEN_LOCATION = ["headers"]
     JWT_HEADER_NAME = "Authorization"
     JWT_HEADER_TYPE = "Bearer"
@@ -98,7 +98,8 @@ class BaseConfig:
 
     CORS_ORIGINS = os.environ.get(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:5173",
+        "http://localhost:3000,http://localhost:5173,"
+        "http://localhost:8899,http://127.0.0.1:8899",
     ).split(",")
     CORS_EXPAND_LAN = _env_bool("CORS_EXPAND_LAN", True)
 
@@ -108,6 +109,25 @@ class BaseConfig:
     HSTS_ENABLED = _env_bool("HSTS_ENABLED", False)
 
     RATE_LIMIT_ENABLED = _env_bool("RATE_LIMIT_ENABLED", True)
+    RATE_LIMIT_EXEMPT_IPS = os.environ.get("RATE_LIMIT_EXEMPT_IPS", "127.0.0.1,::1")
+
+    # Audit trail (global kill-switch). When disabled, audit recording is a
+    # no-op and the audited operations keep working unchanged.
+    AUDIT_LOG_ENABLED = _env_bool("AUDIT_LOG_ENABLED", True)
+
+    # Outbound email (Phase 7). EMAIL_ENABLED defaults to off; when turned on
+    # the SMTP settings below are validated at startup and the app refuses to
+    # boot with an invalid mail configuration. Credentials come only from the
+    # environment and are never exposed through the API.
+    EMAIL_ENABLED = _env_bool("EMAIL_ENABLED", False)
+    EMAIL_PROVIDER = os.environ.get("EMAIL_PROVIDER", "smtp")
+    EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+    EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+    EMAIL_USERNAME = os.environ.get("EMAIL_USERNAME", "")
+    EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", "")
+    EMAIL_FROM = os.environ.get("EMAIL_FROM", "")
+    EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", True)
+    EMAIL_USE_SSL = _env_bool("EMAIL_USE_SSL", False)
 
     ALLOW_DEV_SECRET_FALLBACK = False
 
@@ -175,6 +195,8 @@ class ProductionConfig(BaseConfig):
     DEBUG = False
     SERVE_STATIC = True
     CSP_ENABLED = _env_bool("CSP_ENABLED", True)
+    CORS_EXPAND_LAN = _env_bool("CORS_EXPAND_LAN", False)
+    RATE_LIMIT_EXEMPT_IPS = os.environ.get("RATE_LIMIT_EXEMPT_IPS", "")
 
 
 def get_config() -> BaseConfig:

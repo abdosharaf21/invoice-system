@@ -1,7 +1,7 @@
 """Tax authority repository for operations on tax_invoices and tax_invoice_items."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import mysql.connector
 
@@ -67,6 +67,26 @@ class TaxInvoiceRepository:
         query = "SELECT * FROM tax_invoice_items WHERE tax_invoice_id = %s ORDER BY id"
         cursor.execute(query, (tax_invoice_id,))
         return [self._row_to_item(row) for row in cursor.fetchall()]
+
+    def _load_items_batch(
+        self, cursor, tax_invoice_ids
+    ) -> Dict[int, List[TaxInvoiceItem]]:
+        """Load items for many tax invoices in one query, keyed by id."""
+        ids = [tid for tid in tax_invoice_ids if tid is not None]
+        if not ids:
+            return {}
+        placeholders = ", ".join(["%s"] * len(ids))
+        query = (
+            f"SELECT * FROM tax_invoice_items "
+            f"WHERE tax_invoice_id IN ({placeholders}) "
+            "ORDER BY tax_invoice_id, id"
+        )
+        cursor.execute(query, ids)
+        grouped: Dict[int, List[TaxInvoiceItem]] = {}
+        for row in cursor.fetchall():
+            item = self._row_to_item(row)
+            grouped.setdefault(item.tax_invoice_id, []).append(item)
+        return grouped
 
     def create(self, tax_invoice: TaxInvoice) -> TaxInvoice:
         with self._database.connection() as conn, db_cursor(conn) as cursor:
@@ -196,8 +216,11 @@ class TaxInvoiceRepository:
                 """
                 cursor.execute(query, (company_id, limit, offset))
                 tax_invoices = [self._row_to_tax_invoice(row) for row in cursor.fetchall()]
+                items_by_id = self._load_items_batch(
+                    cursor, [item.id for item in tax_invoices]
+                )
                 for tax_invoice in tax_invoices:
-                    tax_invoice.items = self._load_items(cursor, tax_invoice.id)
+                    tax_invoice.items = items_by_id.get(tax_invoice.id, [])
                 return tax_invoices
             except mysql.connector.Error:
                 raise
@@ -213,8 +236,11 @@ class TaxInvoiceRepository:
                 """
                 cursor.execute(query, (company_id, f"{period}%"))
                 tax_invoices = [self._row_to_tax_invoice(row) for row in cursor.fetchall()]
+                items_by_id = self._load_items_batch(
+                    cursor, [item.id for item in tax_invoices]
+                )
                 for tax_invoice in tax_invoices:
-                    tax_invoice.items = self._load_items(cursor, tax_invoice.id)
+                    tax_invoice.items = items_by_id.get(tax_invoice.id, [])
                 return tax_invoices
             except mysql.connector.Error:
                 raise

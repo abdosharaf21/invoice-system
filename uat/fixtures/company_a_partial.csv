@@ -1,0 +1,3 @@
+uuid,invoice_number,invoice_date,due_date,currency,counterparty_name,counterparty_tax_id,counterparty_email,item_description,quantity,unit_price,vat_rate
+11111111-0000-4000-8000-000000000006,INV-A006,2026-08-27,2026-09-26,EGP,Zeta Wholesale,3000444555,not-an-email,Wholesale batch,1,700.00,14
+,INV-A-BAD,not-a-date,,EGP,Bad Row Co,3000111222,,Broken date line,1,10.00,14

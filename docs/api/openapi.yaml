@@ -1,0 +1,1251 @@
+openapi: 3.0.3
+info:
+  title: Invoice System API
+  description: |
+    REST API for the invoice reconciliation platform (CSV/XLSX accounting
+    imports, reconciliation runs, notification emails, audit trail, users,
+    company and application settings).
+
+    ## Versioning
+
+    * **Stable, documented namespace:** `/api/v1` (this document).
+    * **Compatibility namespace:** `/api` resolves to the *same* handlers
+      and remains supported so existing clients (including the bundled SPA
+      frontend) keep working unchanged. No business logic is duplicated;
+      both prefixes are registered against identical view functions.
+
+    ## Response contract
+
+    Every endpoint returns JSON. Success payloads use:
+
+    ```json
+    { "success": true, "message": "...", "data": { } }
+    ```
+
+    Error payloads always use the stable error envelope:
+
+    ```json
+    {
+      "success": false,
+      "message": "Human readable reason",
+      "status": 400,
+      "code": "BAD_REQUEST"
+    }
+    ```
+
+    See the `Error` schema and the `codes` values in the components section.
+
+    ## Correlation
+
+    Every response carries an `X-Request-Id` header. A client-supplied value
+    (alphanumeric/dot/dash, up to 64 chars) is echoed back; otherwise a
+    generated UUID is returned. Use it to correlate client requests with
+    server logs.
+
+    ## Deprecation
+
+    Superseded endpoints (marked `deprecated: true`) keep working unchanged,
+    but every response they return carries a `Deprecation: true` header and a
+    `Link` header pointing at the replacement endpoint. Clients should migrate
+    to the successor path; the deprecated routes will be removed in a future
+    major version.
+
+    ## Money and dates
+
+    * **Money**: all monetary values (`Decimal`) serialize as JSON strings,
+      never floats (e.g. `"1150.00"`), preserving precision.
+    * **Dates**: timestamps serialize as ISO-8601 strings
+      (`YYYY-MM-DD` for dates, `YYYY-MM-DDTHH:MM:SS` for datetimes).
+  version: "1.0.0"
+
+servers:
+  - url: /api/v1
+    description: Canonical stable version.
+  - url: /api
+    description: Unversioned compatibility alias (identical handlers).
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Login, logout, refresh and profile management.
+  - name: Users
+    description: User management (admin only for writes and listings).
+  - name: Settings
+    description: Application, company and per-user settings.
+  - name: Imports
+    description: Accounting file (CSV/XLSX) imports.
+  - name: Reconciliation
+    description: Run management, invoice-level results and exports.
+  - name: Email
+    description: Email configuration status and test delivery (admin).
+  - name: Audit Trail
+    description: Platform audit log (admin/manager).
+
+paths:
+  # ---------------------------------------------------------------------------
+  # Auth
+  # ---------------------------------------------------------------------------
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: authLogin
+      summary: Authenticate and issue access + refresh tokens.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, example: admin@test.com }
+                password: { type: string, format: password, example: password123 }
+      responses:
+        "200":
+          description: Tokens issued.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        additionalProperties: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/InvalidCredentials" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: authLogout
+      summary: Revoke the current access (and optional refresh) token.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          description: Logged out.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: authRefresh
+      summary: Exchange a valid refresh token for a new access token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          description: New token pair issued.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        additionalProperties: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /auth/logout-refresh:
+    post:
+      tags: [Auth]
+      operationId: authLogoutRefresh
+      summary: Revoke a specific refresh token.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          description: Refresh token revoked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: authMe
+      summary: Return the current authenticated user's profile.
+      responses:
+        "200":
+          description: Profile payload.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/change-password:
+    put:
+      tags: [Auth]
+      operationId: authChangePassword
+      summary: Change the authenticated user's password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string, format: password }
+                new_password: { type: string, format: password, minLength: 8 }
+      responses:
+        "200":
+          description: Password changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ---------------------------------------------------------------------------
+  # Users
+  # ---------------------------------------------------------------------------
+  /users/login:
+    post:
+      tags: [Users]
+      operationId: userLogin
+      summary: Legacy user login (superseded by /auth/login).
+      deprecated: true
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, example: admin@test.com }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: Login successful.
+          headers:
+            Deprecation: { $ref: "#/components/headers/Deprecation" }
+            Link:
+              description: Points at the successor endpoint.
+              schema: { type: string }
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/InvalidCredentials" }
+
+  /users/logout:
+    post:
+      tags: [Users]
+      operationId: userLogout
+      summary: Logout by revoking the current JWT (superseded by /auth/logout).
+      deprecated: true
+      responses:
+        "200":
+          description: Logged out.
+          headers:
+            Deprecation: { $ref: "#/components/headers/Deprecation" }
+            Link:
+              description: Points at the successor endpoint.
+              schema: { type: string }
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me:
+    get:
+      tags: [Users]
+      operationId: userMe
+      summary: Current authenticated user (superseded by GET /auth/me).
+      deprecated: true
+      responses:
+        "200":
+          description: User object.
+          headers:
+            Deprecation: { $ref: "#/components/headers/Deprecation" }
+            Link:
+              description: Points at the successor endpoint.
+              schema: { type: string }
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/:
+    get:
+      tags: [Users]
+      operationId: listUsers
+      summary: List users for the admin's company.
+      responses:
+        "200":
+          description: List of user objects.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Users]
+      operationId: createUser
+      summary: Create a user (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, password]
+              properties:
+                username: { type: string }
+                email: { type: string }
+                password: { type: string, format: password }
+                first_name: { type: string }
+                last_name: { type: string }
+                company_id: { type: integer, nullable: true }
+                roles: { type: array, items: { type: string } }
+                status: { type: string }
+      responses:
+        "201":
+          description: User created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /users/{user_id}:
+    parameters:
+      - { $ref: "#/components/parameters/UserId" }
+    get:
+      tags: [Users]
+      operationId: getUser
+      summary: Fetch a single user (admin only).
+      responses:
+        "200":
+          description: User object.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Users]
+      operationId: updateUser
+      summary: Update a user (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated user object.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      tags: [Users]
+      operationId: deleteUser
+      summary: Delete a user (admin only).
+      responses:
+        "200":
+          description: User deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/{user_id}/password:
+    parameters:
+      - { $ref: "#/components/parameters/UserId" }
+    put:
+      tags: [Users]
+      operationId: changeUserPassword
+      summary: Change a user's password (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_password]
+              properties:
+                new_password: { type: string, format: password, minLength: 8 }
+      responses:
+        "200":
+          description: Password changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /users/{user_id}/activate:
+    parameters:
+      - { $ref: "#/components/parameters/UserId" }
+    put:
+      tags: [Users]
+      operationId: activateUser
+      summary: Activate a user account (admin only).
+      responses:
+        "200":
+          description: Activated user object.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /users/{user_id}/deactivate:
+    parameters:
+      - { $ref: "#/components/parameters/UserId" }
+    put:
+      tags: [Users]
+      operationId: deactivateUser
+      summary: Deactivate a user account (admin only).
+      responses:
+        "200":
+          description: Deactivated user object.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Settings (company settings blueprint shares the /settings prefix)
+  # ---------------------------------------------------------------------------
+  /settings/company:
+    get:
+      tags: [Settings]
+      operationId: getCompanySettings
+      summary: Return the current user's company settings.
+      responses:
+        "200":
+          description: Company object.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Settings]
+      operationId: updateCompanySettings
+      summary: Update company settings (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated company object.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /settings/application:
+    get:
+      tags: [Settings]
+      operationId: getApplicationSettings
+      summary: Return the safe public subset of application settings.
+      responses:
+        "200":
+          description: Settings payload.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Settings]
+      operationId: updateApplicationSettings
+      summary: Update application settings (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated settings payload.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /settings/application/all:
+    get:
+      tags: [Settings]
+      operationId: getAllApplicationSettings
+      summary: Return every setting including internal ones (admin only).
+      responses:
+        "200":
+          description: Full settings payload.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /settings/user:
+    get:
+      tags: [Settings]
+      operationId: getUserSettings
+      summary: Return the authenticated user's own preferences.
+      responses:
+        "200":
+          description: User preferences.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Settings]
+      operationId: updateUserSettings
+      summary: Update the authenticated user's own preferences.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated preferences.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------------------------------------------------------------------
+  # Imports
+  # ---------------------------------------------------------------------------
+  /imports:
+    post:
+      tags: [Imports]
+      operationId: uploadImport
+      summary: Upload and import a CSV/XLSX accounting file.
+      description: |
+        Multipart upload. The file contents are read server-side and imported
+        asynchronously; batch metadata is returned immediately. Rate limited
+        as the upload category.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV or XLSX file.
+      responses:
+        "201":
+          description: Import batch created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        additionalProperties: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /imports/{batch_id}:
+    parameters:
+      - { $ref: "#/components/parameters/BatchId" }
+    get:
+      tags: [Imports]
+      operationId: getImportBatch
+      summary: Fetch an import batch (optionally including errors).
+      parameters:
+        - in: query
+          name: include
+          schema: { type: string, enum: [errors] }
+          description: Pass `errors` to include per-row import errors.
+      responses:
+        "200":
+          description: Batch payload with optional errors array.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------------------
+  # Reconciliation
+  # ---------------------------------------------------------------------------
+  /reconciliation/runs:
+    post:
+      tags: [Reconciliation]
+      operationId: startReconciliationRun
+      summary: Start a reconciliation run for a company and period.
+      description: |
+        Idempotent: starting the same company + period that already has a run
+        returns the existing run with HTTP 200 instead of 409 Conflict. A new
+        run is created only when no run exists for the period, and returns 201.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [period]
+              properties:
+                period:
+                  type: string
+                  pattern: "^(\\d{4}-\\d{2})$"
+                  example: "2026-01"
+                  description: Billing period (YYYY-MM).
+                money_tolerance:
+                  type: string
+                  example: "0.50"
+                  description: Optional monetary tolerance (decimal string).
+      responses:
+        "200":
+          description: Existing run returned (idempotent replay).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "201":
+          description: New run created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    get:
+      tags: [Reconciliation]
+      operationId: listReconciliationRuns
+      summary: List reconciliation runs for the current company.
+      description: Offset-based pagination.
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        "200":
+          description: Runs list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          runs:
+                            type: array
+                            items:
+                              type: object
+                              additionalProperties: true
+                          count: { type: integer }
+                          limit: { type: integer }
+                          offset: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /reconciliation/runs/{run_id}:
+    parameters:
+      - { $ref: "#/components/parameters/RunId" }
+    get:
+      tags: [Reconciliation]
+      operationId: getReconciliationRun
+      summary: Fetch a run and its per-status result counts.
+      responses:
+        "200":
+          description: Run detail with counts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reconciliation/runs/{run_id}/summary:
+    parameters:
+      - { $ref: "#/components/parameters/RunId" }
+    get:
+      tags: [Reconciliation]
+      operationId: getReconciliationSummary
+      summary: Structured report summary for a run.
+      responses:
+        "200":
+          description: Summary payload.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reconciliation/runs/{run_id}/results:
+    parameters:
+      - { $ref: "#/components/parameters/RunId" }
+    get:
+      tags: [Reconciliation]
+      operationId: getReconciliationResults
+      summary: Invoice-level results for a run.
+      description: |
+        With no report query params a flat `{results: [...]}` list is
+        returned (detail-page shape). With any of page/page_size/match_status/
+        uuid/invoice_number/date_from/date_to present, a paginated envelope
+        `{items, page, page_size, total, total_pages}` is returned instead.
+      parameters:
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+        - in: query
+          name: match_status
+          schema: { type: string }
+        - in: query
+          name: uuid
+          schema: { type: string }
+        - in: query
+          name: invoice_number
+          schema: { type: string }
+        - in: query
+          name: date_from
+          schema: { type: string, format: date }
+        - in: query
+          name: date_to
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Results payload.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reconciliation/runs/{run_id}/errors:
+    parameters:
+      - { $ref: "#/components/parameters/RunId" }
+    get:
+      tags: [Reconciliation]
+      operationId: getReconciliationErrors
+      summary: Field/rule-level errors for a run.
+      description: |
+        Flat `{errors: [...]}` without report params; paginated envelope with
+        page/page_size/error_type/source_type present.
+      parameters:
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+        - in: query
+          name: error_type
+          schema: { type: string }
+        - in: query
+          name: source_type
+          schema: { type: string, enum: [account, tax] }
+      responses:
+        "200":
+          description: Errors payload.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reconciliation/runs/{run_id}/results/export:
+    parameters:
+      - { $ref: "#/components/parameters/RunId" }
+    get:
+      tags: [Reconciliation]
+      operationId: exportResults
+      summary: Export a run's results as CSV or XLSX.
+      parameters:
+        - in: query
+          name: format
+          schema: { type: string, enum: [csv, xlsx], default: csv }
+      responses:
+        "200":
+          description: Binary file download.
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reconciliation/runs/{run_id}/errors/export:
+    parameters:
+      - { $ref: "#/components/parameters/RunId" }
+    get:
+      tags: [Reconciliation]
+      operationId: exportErrors
+      summary: Export a run's errors as CSV or XLSX.
+      parameters:
+        - in: query
+          name: format
+          schema: { type: string, enum: [csv, xlsx], default: csv }
+      responses:
+        "200":
+          description: Binary file download.
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reconciliation/runs/{run_id}/email-deliveries:
+    parameters:
+      - { $ref: "#/components/parameters/RunId" }
+    get:
+      tags: [Reconciliation]
+      operationId: listEmailDeliveries
+      summary: List per-taxpayer notification deliveries for a run.
+      responses:
+        "200":
+          description: Deliveries list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          deliveries: { type: array, items: { type: object } }
+                          count: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reconciliation/runs/{run_id}/email-deliveries/{delivery_id}/resend:
+    parameters:
+      - { $ref: "#/components/parameters/RunId" }
+      - in: path
+        name: delivery_id
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [Reconciliation]
+      operationId: resendDeliveryEmail
+      summary: Explicitly resend a single notification email (admin/manager/accountant).
+      responses:
+        "200":
+          description: Email resent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+
+  # ---------------------------------------------------------------------------
+  # Email
+  # ---------------------------------------------------------------------------
+  /email/status:
+    get:
+      tags: [Email]
+      operationId: getEmailStatus
+      summary: Return email configuration status and supported events (admin).
+      responses:
+        "200":
+          description: Status payload (credentials never returned).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /email/test:
+    post:
+      tags: [Email]
+      operationId: sendTestEmail
+      summary: Send one test email to a single address (admin).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              properties:
+                to: { type: string, format: email }
+      responses:
+        "200":
+          description: Test email sent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+
+  # ---------------------------------------------------------------------------
+  # Audit trail
+  # ---------------------------------------------------------------------------
+  /audit-trail/logs:
+    get:
+      tags: [Audit Trail]
+      operationId: listAuditLogs
+      summary: List audit trail entries with optional filters (admin/manager).
+      description: |
+        Always tenant-scoped: company_id is derived from the authenticated
+        JWT, never from client input. Returns the paginated envelope
+        `{items, total, page, page_size, pages, total_pages}`.
+      parameters:
+        - in: query
+          name: actor_id
+          schema: { type: integer }
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: resource_type
+          schema: { type: string }
+        - in: query
+          name: result
+          schema: { type: string }
+        - in: query
+          name: start_date
+          schema: { type: string, format: date }
+        - in: query
+          name: end_date
+          schema: { type: string, format: date }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+        - in: query
+          name: sort_by
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated audit log entries.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBody"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/PaginatedEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------------------
+  # Health
+  # ---------------------------------------------------------------------------
+  /health:
+    get:
+      tags: [Health]
+      operationId: healthCheck
+      summary: Liveness check.
+      security: []
+      responses:
+        "200":
+          description: API is running.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+
+  /health/ready:
+    get:
+      tags: [Health]
+      operationId: healthReady
+      summary: Readiness check (reports database availability).
+      security: []
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessBody" }
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token issued by POST /auth/login. Include as
+        `Authorization: Bearer <token>`.
+
+  parameters:
+    UserId:
+      in: path
+      name: user_id
+      required: true
+      schema: { type: integer }
+    BatchId:
+      in: path
+      name: batch_id
+      required: true
+      schema: { type: integer }
+    RunId:
+      in: path
+      name: run_id
+      required: true
+      schema: { type: integer }
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, default: 1, minimum: 1 }
+    PageSize:
+      in: query
+      name: page_size
+      schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
+
+  headers:
+    RequestId:
+      description: Correlation ID echoed (or generated) for every response.
+      schema: { type: string }
+    Deprecation:
+      description: "`true` on legacy, superseded endpoints."
+      schema: { type: string, enum: [true] }
+
+  schemas:
+    SuccessBody:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean, const: true }
+        message:
+          type: string
+          description: Optional human-readable text (not required for the contract).
+        data:
+          description: >-
+            Contract payload field. Present on endpoints that return data;
+            omitted only for signal-only actions (logout, delete, password
+            change). When present it is always an object or array, never a raw
+            scalar.
+          nullable: true
+
+    Error:
+      type: object
+      required: [success, message, status, code]
+      properties:
+        success: { type: boolean, const: false }
+        message: { type: string }
+        status: { type: integer }
+        code:
+          type: string
+          description: >-
+            Stable machine-readable error code. `APP_ERROR` is a reserved
+            internal fallback and must never be returned for the documented
+            statuses below.
+          enum:
+            - BAD_REQUEST
+            - INVALID_CREDENTIALS
+            - UNAUTHORIZED
+            - TOKEN_REQUIRED
+            - TOKEN_EXPIRED
+            - INVALID_TOKEN
+            - TOKEN_REVOKED
+            - FORBIDDEN
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - CONFLICT
+            - VALIDATION_ERROR
+            - RATE_LIMITED
+            - DATABASE_ERROR
+            - INTERNAL_ERROR
+            - BAD_GATEWAY
+            - SERVICE_UNAVAILABLE
+            - MISSING_FIELD
+
+    PaginatedEnvelope:
+      type: object
+      properties:
+        items:
+          type: array
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+        pages: { type: integer }
+        total_pages: { type: integer }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        email: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
+        roles: { type: array, items: { type: string } }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+  responses:
+    HeaderRef: &reqid_headers
+      X-Request-Id: { $ref: "#/components/headers/RequestId" }
+    BadRequest:
+      description: Invalid request.
+      headers: *reqid_headers
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InvalidCredentials:
+      description: Bad email/password.
+      headers: *reqid_headers
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing, expired, revoked or invalid token.
+      headers: *reqid_headers
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Authenticated but role insufficient.
+      headers: *reqid_headers
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found.
+      headers: *reqid_headers
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Rate limit exceeded.
+      headers: *reqid_headers
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadGateway:
+      description: Upstream email provider failure.
+      headers: *reqid_headers
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }

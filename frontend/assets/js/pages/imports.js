@@ -4,13 +4,13 @@
  * shows the full import outcome, then offers the natural next step.
  */
 
-import { el, clear, qs } from "../utils/dom.js";
+import { el, clear, qs, icons } from "../utils/dom.js";
 import { LIMITS, ACCEPTED_UPLOAD_EXTENSIONS } from "../config.js";
 import { uploadImport } from "../services/imports.js";
-import { importErrorLabel, batchStatusLabel, formatNumber } from "../utils/format.js";
-import { escapeHtml } from "../utils/escape.js";
+import { importErrorLabel, batchStatusLabel, statusClassToken, formatNumber } from "../utils/format.js";
 import { unwrapImportResult } from "../utils/payload.js";
 import { toast } from "../components/toast.js";
+import { t } from "../i18n/index.js";
 
 const BATCH_KEY = "eis.recent_batches";
 
@@ -35,15 +35,15 @@ export async function renderImports(container) {
   container.appendChild(
     el("div", { className: "page-head" },
       el("div", null,
-        el("h1", { className: "page-title" }, "Accounting file import"),
-        el("div", { className: "page-head__meta" }, "Upload a CSV or Excel file of accounting invoices. One row per line item."),
+        el("h1", { className: "page-title" }, t("imports.title")),
+        el("div", { className: "page-head__meta" }, t("imports.meta")),
       ),
     ),
   );
 
   container.appendChild(buildUploadCard());
 
-  const recentBox = el("div", { className: "card", style: "margin-block-start:1.25rem;" });
+  const recentBox = el("div", { className: "card" });
   container.appendChild(recentBox);
   renderRecent(recentBox);
 }
@@ -52,8 +52,8 @@ function buildUploadCard() {
   const card = el("div", { className: "card" });
   card.appendChild(
     el("div", { className: "card__header" },
-      el("div", { className: "section-title" }, "Upload accounting file"),
-      el("span", { className: "text-xs text-muted" }, "CSV or XLSX · max 10 MB"),
+      el("div", { className: "section-title" }, t("imports.uploadCard")),
+      el("span", { className: "text-xs text-muted" }, t("imports.formatHint", { size: formatFileSize(LIMITS.maxUploadBytes) })),
     ),
   );
 
@@ -69,22 +69,28 @@ function buildUploadCard() {
     style: "display:none;",
   });
 
-  const fileName = el("div", { className: "text-sm text-secondary", "aria-live": "polite" }, "No file selected");
+  const fileName = el("div", { className: "text-sm text-secondary", "aria-live": "polite" }, t("imports.noFile"));
   const dropzone = el("div", {
     className: "dropzone",
     tabindex: "0",
     role: "button",
-    "aria-label": "Choose a CSV or XLSX file to import",
+    "aria-label": t("imports.chooseAria"),
   },
-    el("div", { className: "dropzone__title" }, "Choose a CSV or Excel file, or drop it here"),
-    el("div", { className: "text-xs" }, "Accepted: .csv, .xlsx · one row per invoice line item"),
+    el("div", { className: "dropzone__icon" }, (() => { const ic = icons.import.cloneNode(true); ic.setAttribute("aria-hidden", "true"); return ic; })()),
+    el("div", { className: "dropzone__title" }, t("imports.chooseTitle")),
+    el("div", { className: "text-xs" }, t("imports.accepted")),
   );
   dropzone.addEventListener("click", () => fileInput.click());
   dropzone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
-  dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("is-dragover"); });
-  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("is-dragover"));
+
+  // Drag counter keeps the highlight stable while dragging over child nodes.
+  let dragDepth = 0;
+  dropzone.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth += 1; dropzone.classList.add("is-dragover"); });
+  dropzone.addEventListener("dragover", (e) => { e.preventDefault(); });
+  dropzone.addEventListener("dragleave", () => { dragDepth -= 1; if (dragDepth <= 0) { dragDepth = 0; dropzone.classList.remove("is-dragover"); } });
   dropzone.addEventListener("drop", (e) => {
     e.preventDefault();
+    dragDepth = 0;
     dropzone.classList.remove("is-dragover");
     if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
   });
@@ -95,11 +101,11 @@ function buildUploadCard() {
 
   const meta = el("div", null,
     dropzone,
-    el("div", { className: "text-sm text-secondary", style: "margin-block-start:0.75rem;" }, fileName),
+    el("div", { className: "text-sm text-secondary", style: "margin-block-start:var(--space-3);" }, fileName),
   );
 
   // ---- Step 2: upload button + progress ----
-  const uploadBtn = el("button", { className: "btn btn-primary", type: "button", disabled: "disabled" }, "Upload and import");
+  const uploadBtn = el("button", { className: "btn btn-primary", type: "button", disabled: "disabled" }, t("imports.upload"));
   const progressWrap = el("div", null);
   progressWrap.style.display = "none";
 
@@ -120,8 +126,8 @@ function buildUploadCard() {
     uploadBtn.disabled = !ok;
 
     let reason = "";
-    if (!fileOk) reason = "Unsupported file type — choose a .csv or .xlsx file.";
-    if (fileOk && !sizeOk) reason = "File exceeds the 10 MB limit.";
+    if (!fileOk) reason = t("imports.unsupported");
+    if (fileOk && !sizeOk) reason = t("imports.exceeds", { size: formatFileSize(LIMITS.maxUploadBytes) });
     meta.appendChild(replaceHint(meta, reason));
   }
 
@@ -129,7 +135,7 @@ function buildUploadCard() {
     const existing = qs(".import-hint", scope);
     if (existing) existing.remove();
     if (!text) return existing;
-    const h = el("div", { className: "import-hint alert alert--warning text-xs", style: "margin-block-start:0.5rem;", role: "status" }, text);
+    const h = el("div", { className: "import-hint alert alert--warning text-xs", style: "margin-block-start:var(--space-2);", role: "status" }, text);
     scope.appendChild(h);
     return h;
   }
@@ -137,14 +143,14 @@ function buildUploadCard() {
   uploadBtn.addEventListener("click", async () => {
     if (!selected) return;
     uploadBtn.disabled = true;
-    fileName.textContent = "Uploading…";
+    fileName.textContent = t("imports.uploading");
 
     const form = new FormData();
     form.append("file", selected);
 
     progressWrap.style.display = "block";
     progressWrap.appendChild(el("div", { className: "progress-track" },
-      el("div", { className: "progress-bar is-indeterminate", role: "progressbar", "aria-label": "Uploading and importing" }),
+      el("div", { className: "progress-bar is-indeterminate", role: "progressbar", "aria-label": t("imports.progressAria") }),
     ));
 
     try {
@@ -155,7 +161,7 @@ function buildUploadCard() {
       uploadBtn.disabled = true;
       const batch = unwrapImportResult(result);
       rememberBatch(batch);
-      toast("Import completed", { type: "success" });
+      toast(t("imports.completed"), { type: "success" });
       renderOutcome(summaryBox, errorsBox, batch);
       window.setTimeout(() => {
         if (batch.id) window.location.hash = `#/imports/${batch.id}`;
@@ -163,8 +169,8 @@ function buildUploadCard() {
     } catch (err) {
       progressWrap.style.display = "none";
       uploadBtn.disabled = false;
-      fileName.textContent = "Upload failed. Choose a file to retry.";
-      const message = err.message || "Import failed — please check the file and try again.";
+      fileName.textContent = t("imports.uploadFailed");
+      const message = err.message || t("imports.importFailed");
       toast(message, { type: "error" });
       summaryBox.replaceChildren(el("div", { className: "alert alert--error" }, message));
     }
@@ -185,19 +191,19 @@ function renderOutcome(summaryBox, errorsBox, batch) {
   clear(errorsBox);
 
   const rows = [
-    ["Batch", escapeHtml(String(batch.id))],
-    ["File", escapeHtml(batch.filename || "—")],
-    ["Status", batchStatusLabel(batch.status)],
-    ["Total rows", formatNumber(batch.total_rows)],
-    ["Processed rows", formatNumber(batch.processed_rows)],
-    ["Rejected rows", formatNumber(batch.error_rows)],
+    [t("imports.batch"), String(batch.id)],
+    [t("imports.file"), batch.filename || "—"],
+    [t("imports.status"), batchStatusLabel(batch.status)],
+    [t("imports.totalRows"), formatNumber(batch.total_rows)],
+    [t("imports.processedRows"), formatNumber(batch.processed_rows)],
+    [t("imports.rejectedRows"), formatNumber(batch.error_rows)],
   ];
 
   summaryBox.appendChild(
-    el("div", { className: "card", style: "margin-block-start:1.25rem;" },
+    el("div", { className: "card" },
       el("div", { className: "card__header" },
-        el("div", { className: "section-title" }, "Import result"),
-        el("span", { className: `badge badge--${batch.status}` }, batchStatusLabel(batch.status)),
+        el("div", { className: "section-title" }, t("imports.result")),
+        el("span", { className: `badge badge--${statusClassToken(batch.status)}` }, batchStatusLabel(batch.status)),
       ),
       el("div", { className: "card__body" },
         el("dl", { className: "dl" }, ...rows.map(([k, v]) => el("div", null, el("dt", null, k), el("dd", null, v)))),
@@ -210,22 +216,25 @@ async function renderRecent(container) {
   clear(container);
   container.appendChild(
     el("div", { className: "card__header" },
-      el("div", { className: "section-title" }, "Recent imports"),
-      el("span", { className: "text-xs text-muted" }, "Batches imported from this session"),
+      el("div", { className: "section-title" }, t("imports.recent")),
+      el("span", { className: "text-xs text-muted" }, t("imports.sessionBatches")),
     ),
   );
 
   const ids = recentBatches();
   if (ids.length === 0) {
-    container.appendChild(el("div", { className: "etable-empty" }, "No imports from this session yet."));
+    container.appendChild(el("div", { className: "state-block" },
+      el("div", { className: "state-block__icon" }, "📋"),
+      el("div", { className: "state-block__title" }, t("imports.noImports")),
+    ));
     return;
   }
 
   const list = el("ul", { className: "list-plain" });
   for (const id of ids) {
-    const item = el("li", { style: "padding:0.5rem 1rem;border-block-end:1px solid var(--color-border);" },
+    const item = el("li", { style: "padding:var(--space-2) var(--space-4);border-block-end:1px solid var(--color-border);" },
       el("button", { className: "btn btn-ghost btn-sm", onClick: () => { window.location.hash = `#/imports/${id}`; } },
-        `Batch #${id}`),
+        t("imports.batchNo", { id })),
     );
     list.appendChild(item);
   }

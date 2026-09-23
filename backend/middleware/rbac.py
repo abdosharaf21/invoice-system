@@ -1,10 +1,51 @@
 """Role-Based Access Control (RBAC) middleware for Flask routes."""
 
+import logging
 from functools import wraps
 from typing import Callable
 
-from flask import jsonify
+from flask import g, jsonify, request
 from flask_jwt_extended import verify_jwt_in_request, get_jwt
+
+logger = logging.getLogger(__name__)
+
+
+def _deny(message: str):
+    """Build and audit a 403 access-denied response.
+
+    Records a security event on the audit trail so denied attempts are
+    traceable, then returns the same response contract used before the
+    audit trail existed.
+
+    Args:
+        message: The permission-denied message to expose to the client.
+
+    Returns:
+        A Flask JSON response tuple with status 403 and a stable code.
+    """
+    from backend.modules.audit_trail.model import AuditLog
+    from backend.modules.audit_trail.service import record_security_event
+
+    record_security_event(
+        action=AuditLog.ACTION_OTHER,
+        resource_type="authorization",
+        result=AuditLog.RESULT_FAILURE,
+        metadata={"reason": "insufficient_permissions", "message": message},
+    )
+    logger.warning(
+        "Authorization denied user_id=%s role=%s method=%s path=%s message=%s",
+        getattr(g, "user_id", None),
+        getattr(g, "user_role", None),
+        request.method,
+        request.path,
+        message,
+    )
+    return jsonify({
+        "success": False,
+        "message": message,
+        "status": 403,
+        "code": "FORBIDDEN",
+    }), 403
 
 
 def require_roles(*allowed_roles: str) -> Callable:
@@ -27,12 +68,7 @@ def require_roles(*allowed_roles: str) -> Callable:
             user_role = jwt_data.get("role")
 
             if user_role not in allowed_roles:
-                return jsonify({
-                    "success": False,
-                    "message": "Access denied. Insufficient permissions.",
-                    "status": 403,
-                    "code": "FORBIDDEN",
-                }), 403
+                return _deny("Access denied. Insufficient permissions.")
 
             return fn(*args, **kwargs)
         return wrapper
@@ -48,12 +84,7 @@ def require_admin(fn: Callable) -> Callable:
         user_role = jwt_data.get("role")
 
         if user_role != "admin":
-            return jsonify({
-                "success": False,
-                "message": "Access denied. Admin privileges required.",
-                "status": 403,
-                "code": "FORBIDDEN",
-            }), 403
+            return _deny("Access denied. Admin privileges required.")
 
         return fn(*args, **kwargs)
     return wrapper
@@ -68,12 +99,7 @@ def require_admin_or_manager(fn: Callable) -> Callable:
         user_role = jwt_data.get("role")
 
         if user_role not in ("admin", "manager"):
-            return jsonify({
-                "success": False,
-                "message": "Access denied. Admin or manager privileges required.",
-                "status": 403,
-                "code": "FORBIDDEN",
-            }), 403
+            return _deny("Access denied. Admin or manager privileges required.")
 
         return fn(*args, **kwargs)
     return wrapper

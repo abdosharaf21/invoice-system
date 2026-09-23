@@ -96,6 +96,8 @@ th.num {
   cursor: not-allowed;
 }
 
+.textarea { resize: vertical; min-height: 96px; }
+
 .input.has-error,
 .select.has-error {
   border-color: var(--color-danger);
@@ -119,11 +121,49 @@ th.num {
   gap: var(--space-4);
 }
 
+/* Bottom-aligned variant: keeps labels/hints level with the trailing button. */
+.form-row--start {
+  align-items: end;
+}
+
+.form-row--start .form-field {
+  margin-block-end: 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4) var(--space-5);
+}
+
+.form-grid__2col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-grid__3col {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 48em) {
+  .form-grid__2col,
+  .form-grid__3col {
+    grid-template-columns: 1fr;
+  }
+}
+
 .form-actions {
   display: flex;
   gap: var(--space-3);
   align-items: center;
   margin-block-start: var(--space-5);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  accent-color: var(--color-primary);
 }
 
 .checkbox-inline {
@@ -155,4 +195,42 @@ th.num {
   background:
     linear-gradient(180deg, rgba(18, 46, 71, 0.92), rgba(18, 46, 71, 0.96)),
     var(--color-primary-darker);
+}
+/* ===========================================================================
+   Skip link (Req 14 / a11y). Visually hidden until focused so it never
+   occupies layout space; revealed on :focus so a keyboard user can jump the
+   reading cursor to the #app-main landmark. The SPA hash router never routes
+   on "app-main", so the href stays a stable in-page anchor and app.js wires
+   the click to move focus instead of letting the router swallow the hash.
+   =========================================================================== */
+.skip-link {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--z-high, 9999);
+  padding: 0.75rem 1rem;
+  background: var(--color-primary, #1d4ed8);
+  color: var(--color-on-primary, #fff);
+  font-weight: 600;
+  border-radius: 0 0 var(--radius-md, 0.5rem) 0;
+  text-decoration: none;
+  transform: translateY(-200%);
+  transition: transform 0.15s ease-out;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  width: 1px;
+  height: 1px;
+  white-space: nowrap;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  clip: auto;
+  clip-path: none;
+  width: auto;
+  height: auto;
+  transform: translateY(0);
+}
+.skip-link:focus-visible {
+  outline: 3px solid var(--color-focus-ring, #f5b301);
+  outline-offset: 2px;
 }

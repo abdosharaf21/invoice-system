@@ -12,6 +12,9 @@ import {
   importErrorLabel,
   errorTypeLabel,
   roleLabel,
+  roleClassToken,
+  statusLabel,
+  statusClassToken,
   sourceTypeLabel,
 } from "../assets/js/utils/format.js";
 
@@ -98,5 +101,54 @@ describe("status / role labels", () => {
     assert.equal(sourceTypeLabel("account"), "Accounting");
     assert.equal(sourceTypeLabel("tax"), "Tax Authority");
     assert.equal(sourceTypeLabel(null), "—");
+  });
+});
+
+describe("safe status class tokens (P0.1)", () => {
+  it("maps every known status to its own token", () => {
+    for (const s of [
+      "matched", "mismatched", "missing_in_tax_authority", "extra_in_tax_authority",
+      "invalid", "pending", "running", "completed", "failed",
+      "uploaded", "processing", "sent", "skipped", "no_email", "active", "inactive",
+    ]) {
+      assert.equal(statusClassToken(s), s);
+    }
+  });
+  it("falls back to neutral for missing, empty and unknown values", () => {
+    assert.equal(statusClassToken(null), "neutral");
+    assert.equal(statusClassToken(undefined), "neutral");
+    assert.equal(statusClassToken(""), "neutral");
+    assert.equal(statusClassToken("   "), "neutral");
+    assert.equal(statusClassToken("bogus"), "neutral");
+  });
+  it("never returns a raw attacker-controlled class token", () => {
+    assert.equal(statusClassToken('<img src=x onerror=bad>'), "neutral");
+    assert.equal(statusClassToken("matched onerror=x"), "neutral");
+    assert.equal(statusClassToken('x" style="x'), "neutral");
+  });
+  it("renders human labels, Unknown for missing and verbatim for unknown", () => {
+    assert.equal(statusLabel("completed"), "Completed");
+    assert.equal(statusLabel("sent"), "Sent");
+    assert.equal(statusLabel("no_email"), "No email");
+    assert.equal(statusLabel("active"), "Active");
+    assert.equal(statusLabel(null), "Unknown");
+    assert.equal(statusLabel(undefined), "Unknown");
+    assert.equal(statusLabel(""), "Unknown");
+    assert.equal(statusLabel("weird"), "weird");
+  });
+  it("keeps the domain label helpers consistent with the shared map", () => {
+    assert.equal(matchStatusLabel("matched"), statusLabel("matched"));
+    assert.equal(matchStatusLabel("bogus"), "bogus");
+    assert.equal(runStatusLabel("running"), statusLabel("running"));
+    assert.equal(batchStatusLabel("uploaded"), statusLabel("uploaded"));
+  });
+  it("guards role badge tokens", () => {
+    assert.equal(roleClassToken("admin"), "role-admin");
+    assert.equal(roleClassToken("accountant"), "role-accountant");
+    assert.equal(roleClassToken("manager"), "role-manager");
+    assert.equal(roleClassToken("viewer"), "role-viewer");
+    assert.equal(roleClassToken("<script>"), "role-viewer");
+    assert.equal(roleClassToken(undefined), "role-viewer");
+    assert.equal(roleClassToken(null), "role-viewer");
   });
 });

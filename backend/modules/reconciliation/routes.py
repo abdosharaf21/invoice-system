@@ -12,6 +12,10 @@ Endpoints:
   (paginated + filterable when report query params are present).
 * ``GET  /api/reconciliation/runs/<run_id>/results/export`` - results as csv/xlsx.
 * ``GET  /api/reconciliation/runs/<run_id>/errors/export``  - errors as csv/xlsx.
+* ``GET  /api/reconciliation/runs/<run_id>/email-deliveries`` - notification
+  deliveries for a run (per-taxpayer tracking rows).
+* ``POST /api/reconciliation/runs/<run_id>/email-deliveries/<delivery_id>/resend``
+  - explicitly resend one delivery.
 
 All endpoints require authentication and the admin, accountant or manager
 role, and enforce company ownership of the requested run.
@@ -25,8 +29,15 @@ from decimal import Decimal, InvalidOperation
 from flask import Blueprint, jsonify, request, send_file
 from flask_jwt_extended import get_jwt_identity
 
+from backend.middleware.contract import error_response
 from backend.middleware.exceptions import BadRequestException, NotFoundException
 from backend.middleware.rbac import require_roles
+from backend.modules.email.provider import (
+    EmailAuthError,
+    EmailDisabledError,
+    EmailTransportError,
+    EmailValidationError,
+)
 from backend.modules.reconciliation import contract as c
 from backend.modules.reconciliation.service import ReconciliationService
 
@@ -61,6 +72,11 @@ def init_reconciliation_service(service: ReconciliationService) -> None:
     _reconciliation_service = service
 
 
+def _error(message: str, status: int) -> tuple:
+    """Build an error response using the canonical error envelope."""
+    return error_response(message, status)
+
+
 @reconciliation_bp.route("/runs", methods=["POST"])
 @require_roles(*_RECONCILIATION_ROLES)
 def start_reconciliation_run():
@@ -78,7 +94,7 @@ def start_reconciliation_run():
 
     money_tolerance = _parse_tolerance(body.get("money_tolerance"))
 
-    run, counts = _reconciliation_service.start_run(
+    run, counts, is_new = _reconciliation_service.start_run(
         company_id=company_id,
         period=normalize_period(period),
         money_tolerance=money_tolerance,
@@ -86,7 +102,7 @@ def start_reconciliation_run():
     return jsonify({
         "success": True,
         "data": {"run": run.to_dict(), "counts": counts},
-    }), 201
+    }), 201 if is_new else 200
 
 
 @reconciliation_bp.route("/runs", methods=["GET"])
@@ -237,6 +253,57 @@ def export_reconciliation_errors(run_id: int):
     if outcome is None:
         raise NotFoundException("Reconciliation run not found")
     return _export_response(*outcome)
+
+
+@reconciliation_bp.route("/runs/<int:run_id>/email-deliveries", methods=["GET"])
+@require_roles(*_RECONCILIATION_ROLES)
+def get_reconciliation_email_deliveries(run_id: int):
+    """Fetch the per-taxpayer notification deliveries for a run."""
+    _ensure_configured()
+
+    deliveries = _reconciliation_service.list_email_deliveries(
+        run_id, _company_id()
+    )
+    if deliveries is None:
+        raise NotFoundException("Reconciliation run not found")
+
+    return jsonify({
+        "success": True,
+        "data": {"deliveries": deliveries, "count": len(deliveries)},
+    }), 200
+
+
+@reconciliation_bp.route(
+    "/runs/<int:run_id>/email-deliveries/<int:delivery_id>/resend",
+    methods=["POST"],
+)
+@require_roles(*_RECONCILIATION_ROLES)
+def resend_reconciliation_email(run_id: int, delivery_id: int):
+    """Explicitly resend a single notification email for a run."""
+    _ensure_configured()
+
+    try:
+        delivery = _reconciliation_service.resend_email_delivery(
+            run_id, delivery_id, _company_id()
+        )
+    except EmailValidationError as exc:
+        return _error(str(exc), 400)
+    except EmailDisabledError as exc:
+        return _error(str(exc), 400)
+    except (EmailAuthError, EmailTransportError) as exc:
+        logger.error(
+            "Email resend failed (run=%s delivery=%s): %s",
+            run_id, delivery_id, exc,
+        )
+        return _error("Email resend failed; check the server logs", 502)
+    if delivery is None:
+        raise NotFoundException("Email delivery not found")
+
+    return jsonify({
+        "success": True,
+        "message": "Email resent",
+        "data": {"delivery": delivery},
+    }), 200
 
 
 def _ensure_configured() -> None:

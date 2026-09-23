@@ -26,13 +26,21 @@ DEFAULT_MAX_AGE = 3600
 
 
 def _expand_origins(origins: List[str]) -> List[str]:
-    """Expand origin list with LAN IP variants."""
+    """Expand origin list with LAN IP and loopback 0.0.0.0 variants."""
     result = list(origins)
     if _LAN_IP:
         for origin in origins:
             if "localhost" in origin:
                 result.append(origin.replace("localhost", _LAN_IP))
-    return result
+    # A local static server is often bound to all interfaces
+    # (``python3 -m http.server 8899``), so clients may present the page
+    # as ``http://0.0.0.0:PORT`` rather than ``http://localhost:PORT``.
+    for origin in origins:
+        if "localhost" in origin:
+            result.append(origin.replace("localhost", "0.0.0.0"))
+        if "127.0.0.1" in origin:
+            result.append(origin.replace("127.0.0.1", "0.0.0.0"))
+    return list(dict.fromkeys(result))
 
 
 def create_cors_middleware(

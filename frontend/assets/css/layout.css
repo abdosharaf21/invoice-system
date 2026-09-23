@@ -19,8 +19,8 @@
   top: 0;
   align-self: start;
   height: 100vh;
-  background: var(--color-primary-darker);
-  color: #cdd8e3;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -31,8 +31,8 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-4);
-  color: #ffffff;
-  border-block-end: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--sidebar-text-active);
+  border-block-end: 1px solid var(--sidebar-divider);
 }
 
 .sidebar__brand-title {
@@ -44,7 +44,7 @@
 
 .sidebar__brand-sub {
   font-size: var(--text-xs);
-  color: #8fa3b7;
+  color: var(--sidebar-text-muted);
   font-weight: 400;
 }
 
@@ -61,7 +61,7 @@
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #778ea4;
+  color: var(--sidebar-text-faint);
   padding: var(--space-2) var(--space-3);
 }
 
@@ -71,20 +71,20 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  color: #c5d2de;
+  color: var(--sidebar-text-strong);
   font-size: var(--text-sm);
   font-weight: 500;
   transition: background var(--transition-fast);
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
+  background: var(--sidebar-hover-bg);
+  color: var(--sidebar-hover-text);
 }
 
 .nav-item.is-active {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--sidebar-text-active);
 }
 
 .nav-item__icon {
@@ -97,9 +97,9 @@
 
 .sidebar__footer {
   padding: var(--space-3) var(--space-4);
-  border-block-start: 1px solid rgba(255, 255, 255, 0.08);
+  border-block-start: 1px solid var(--sidebar-divider);
   font-size: var(--text-xs);
-  color: #7f95a9;
+  color: var(--sidebar-label);
 }
 
 /* ---------- Header ---------- */
@@ -171,7 +171,7 @@
   background: var(--color-surface);
 }
 
-.user-menu__button:hover { background: var(--color-surface-alt); }
+.user-menu__button:hover { background: var(--color-surface-alt); transition: background var(--transition-fast); }
 
 .user-menu__avatar {
   width: 26px;
@@ -284,24 +284,38 @@
     inset-block-start: 0;
     inset-inline-start: 0;
     height: 100vh;
-    z-index: var(--z-overlay);
+    /* One step above the backdrop so the drawer is always clickable. */
+    z-index: calc(var(--z-overlay) + 1);
     transform: translateX(-100%);
-    transition: transform var(--transition-base);
+    /* A closed off-canvas drawer must not leak into the focus order or the
+       accessibility tree — visibility removes it from both (transform alone
+       does not), while the delayed switch keeps the slide-out clean. */
+    visibility: hidden;
+    transition: transform var(--transition-base), visibility 0s linear var(--transition-base);
     width: var(--sidebar-width);
   }
 
   [dir="rtl"] .sidebar { transform: translateX(100%); }
 
-  .sidebar.is-open { transform: translateX(0); }
+  .sidebar.is-open {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--transition-base), visibility 0s;
+  }
 
   .sidebar__backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(9, 18, 28, 0.5);
+    background: var(--color-overlay);
     z-index: var(--z-overlay);
   }
 
   .header__menu-toggle { display: inline-flex; }
   .header__company { display: none; }
   .main { padding: var(--space-4); }
+}
+
+@media (max-width: 480px) {
+  .main { padding: var(--space-3); }
+  .page-head { margin-block-end: var(--space-4); }
 }

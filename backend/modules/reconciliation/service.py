@@ -9,10 +9,13 @@ The service owns the run lifecycle:
 4. run the pure reconciliation engine,
 5. persist results, errors and the ``completed`` status in a single
    transaction,
-6. on a fatal database/system error, mark the run ``failed`` and re-raise.
+6. on a fatal database/system error, mark the run ``failed`` and re-raise,
+7. best-effort email notifications for the completed run, after the
+   transaction is committed.
 
 Individual invoice mismatches are expected outcomes, not errors. The run is
 never reported successful unless every result row was persisted atomically.
+Email notification failures are logged and never change the run outcome.
 """
 
 import logging
@@ -31,6 +34,8 @@ from backend.modules.reconciliation.engine import (
 from backend.modules.reconciliation.model import (
     ReconciliationRun,
 )
+from backend.modules.audit_trail.model import AuditLog
+from backend.modules.audit_trail.service import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +49,13 @@ class ReconciliationService:
         invoice_repo,
         tax_repo,
         user_repo=None,
+        email_service=None,
     ) -> None:
         self._recon_repo = recon_repo
         self._invoice_repo = invoice_repo
         self._tax_repo = tax_repo
         self._user_repo = user_repo
+        self._email_service = email_service
 
     def company_for_user(self, user_id: int) -> Optional[int]:
         """Resolve the company id a user belongs to, if any."""
@@ -59,6 +66,20 @@ class ReconciliationService:
             return None
         return user.company_id
 
+    def recover_interrupted(self) -> int:
+        """Mark any run left in a temporary state as failed.
+
+        Called once at application startup so runs interrupted by a crash are
+        surfaced as ``failed`` instead of staying ``pending``/``running``
+        forever. A run in a temporary state at startup has no persisted
+        results (those commit atomically with the ``completed`` status), so
+        marking it ``failed`` never discards real outcomes.
+
+        Returns:
+            The number of runs transitioned to ``failed``.
+        """
+        return self._recon_repo.recover_interrupted_runs()
+
     def start_run(
         self,
         company_id: int,
@@ -67,14 +88,21 @@ class ReconciliationService:
     ) -> tuple:
         """Run a full reconciliation for a company and 'YYYY-MM' period.
 
+        Starts are idempotent per (company_id, period): when an in-flight run
+        already exists for the same period it is returned instead of creating
+        a duplicate run.  Completed or failed runs do not block a new attempt.
+
         Args:
             company_id: Owning company id.
             period: Billing period as 'YYYY-MM'.
             money_tolerance: Optional tolerance for money comparisons.
 
         Returns:
-            ``(run, summary_counts)`` where the run is the persisted,
-            completed run and summary_counts is a per-status breakdown.
+            ``(run, summary_counts, is_new)``.  ``is_new`` is ``True`` when a
+            new run was created and ``False`` when an in-flight run already
+            existed for the period and was returned instead.  ``run`` is the
+            completed run on a fresh start or the existing in-flight run on a
+            duplicate request; ``summary_counts`` is the per-status breakdown.
 
         Raises:
             ValueError: if the period is malformed.
@@ -85,11 +113,16 @@ class ReconciliationService:
                 f"Invalid period '{period}'. Expected a 'YYYY-MM' period."
             )
 
-        run = self._recon_repo.create_run(ReconciliationRun(
-            company_id=company_id,
-            period=normalized,
-            status=c.RUN_PENDING,
-        ))
+        run, is_new = self._recon_repo.create_run_exclusive(
+            company_id, normalized
+        )
+        if not is_new:
+            return run, self.get_summary(run.id), False
+
+        logger.info(
+            "Reconciliation started run=%s company=%s period=%s",
+            run.id, company_id, normalized,
+        )
         self._recon_repo.start_run(run.id)
 
         try:
@@ -104,14 +137,25 @@ class ReconciliationService:
                 tax_invoices,
                 money_tolerance=money_tolerance,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Reconciliation run %s failed", run.id)
-            self._mark_failed(run.id)
+            self._fail_run(run.id)
+            record_event(
+                action=AuditLog.ACTION_RECONCILE,
+                resource_type="reconciliation",
+                resource_id=str(run.id),
+                result=AuditLog.RESULT_FAILURE,
+                company_id=company_id,
+                metadata={
+                    "period": normalized,
+                    "phase": "reconcile",
+                },
+            )
             raise
 
         counts = self._counts(outcome)
         try:
-            self._recon_repo.finish_run_transaction(
+            completed = self._recon_repo.finish_run_transaction(
                 run.id,
                 outcome.results,
                 outcome.errors,
@@ -124,15 +168,85 @@ class ReconciliationService:
                 + counts[c.INVALID],
                 error_count=len(outcome.errors),
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Failed to persist outcomes for reconciliation run %s", run.id
             )
-            self._mark_failed(run.id)
+            self._fail_run(run.id)
+            record_event(
+                action=AuditLog.ACTION_RECONCILE,
+                resource_type="reconciliation",
+                resource_id=str(run.id),
+                result=AuditLog.RESULT_FAILURE,
+                company_id=company_id,
+                metadata={
+                    "period": normalized,
+                    "phase": "persist",
+                },
+            )
             raise
 
+        if not completed:
+            logger.error(
+                "Reconciliation run %s could not be completed (status no "
+                "longer eligible; likely recovered as interrupted)",
+                run.id,
+            )
+            self._fail_run(run.id)
+            record_event(
+                action=AuditLog.ACTION_RECONCILE,
+                resource_type="reconciliation",
+                resource_id=str(run.id),
+                result=AuditLog.RESULT_FAILURE,
+                company_id=company_id,
+                metadata={
+                    "period": normalized,
+                    "phase": "persist",
+                    "reason": "run_no_longer_in_flight",
+                },
+            )
+            raise RuntimeError(
+                "Reconciliation run could not be completed because it was "
+                "no longer in a running state"
+            )
+
         persisted = self._recon_repo.get_run_by_id(run.id)
-        return persisted, counts
+        record_event(
+            action=AuditLog.ACTION_RECONCILE,
+            resource_type="reconciliation",
+            resource_id=str(run.id),
+            result=AuditLog.RESULT_SUCCESS,
+            company_id=company_id,
+            metadata={
+                "period": normalized,
+                "invoice_count": counts[c.MATCHED]
+                + counts[c.MISMATCHED]
+                + counts[c.MISSING_IN_TAX_AUTHORITY]
+                + counts[c.EXTRA_IN_TAX_AUTHORITY]
+                + counts[c.INVALID],
+                "matched": counts[c.MATCHED],
+                "unmatched": counts[c.MISMATCHED]
+                + counts[c.MISSING_IN_TAX_AUTHORITY]
+                + counts[c.EXTRA_IN_TAX_AUTHORITY]
+                + counts[c.INVALID],
+                "errors": len(outcome.errors),
+            },
+        )
+        logger.info(
+            "Reconciliation completed run=%s company=%s period=%s matched=%d "
+            "unmatched=%d errors=%d",
+            run.id,
+            company_id,
+            normalized,
+            counts[c.MATCHED],
+            counts[c.MISMATCHED]
+            + counts[c.MISSING_IN_TAX_AUTHORITY]
+            + counts[c.EXTRA_IN_TAX_AUTHORITY]
+            + counts[c.INVALID],
+            len(outcome.errors),
+        )
+        self._notify_discrepancies(persisted)
+        return persisted, counts, True
 
     def get_run(self, run_id: int, company_id: int) -> Optional[ReconciliationRun]:
         """Fetch a run by id, scoped to a company."""
@@ -168,6 +282,32 @@ class ReconciliationService:
 
     # ------------------------------------------------------------------
     # Reports
+    # ------------------------------------------------------------------
+
+    def resend_email_delivery(
+        self, run_id: int, delivery_id: int, company_id: int
+    ):
+        """Explicitly resend one email delivery for a run, scoped to a company.
+
+        Returns the refreshed delivery dict on success, or ``None`` when the
+        run is not accessible, email is not wired up, or the delivery does
+        not belong to the run/company. Transport and validation failures are
+        propagated to the route so they can be surfaced to the caller.
+        """
+        if self.get_run(run_id, company_id) is None or self._email_service is None:
+            return None
+        return self._email_service.resend_delivery(run_id, delivery_id, company_id)
+
+    def list_email_deliveries(
+        self, run_id: int, company_id: int
+    ) -> Optional[List[dict]]:
+        """Delivery rows for a run, scoped to a company (newest first)."""
+        if self.get_run(run_id, company_id) is None or self._email_service is None:
+            return None
+        return self._email_service.list_deliveries(run_id, company_id)
+
+    # ------------------------------------------------------------------
+    # Report summary
     # ------------------------------------------------------------------
 
     def get_report_summary(self, run_id: int, company_id: int) -> Optional[dict]:
@@ -296,3 +436,26 @@ class ReconciliationService:
             self._recon_repo.fail_run(run_id)
         except Exception:
             logger.exception("Failed to mark run %s as failed", run_id)
+
+    # ------------------------------------------------------------------
+    # Email notifications (best-effort, never affect the run outcome)
+    # ------------------------------------------------------------------
+
+    def _fail_run(self, run_id: int) -> None:
+        self._mark_failed(run_id)
+
+    def _notify_discrepancies(self, run: ReconciliationRun) -> None:
+        """Best-effort per-taxpayer summary email for a completed run.
+
+        Called after the run's transaction is committed. Failures are logged
+        and never affect the run outcome.
+        """
+        if self._email_service is None:
+            return
+        try:
+            rows = self._recon_repo.list_affected_results_with_party(run.id)
+            self._email_service.notify_run_summary(run, rows)
+        except Exception:
+            logger.exception(
+                "Email notification failed for reconciliation run %s", run.id
+            )

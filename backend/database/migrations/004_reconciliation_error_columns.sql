@@ -1,4 +1,5 @@
 -- Migration 004: Reconciliation error detail columns.
+-- verify: reconciliation_errors
 --
 -- Phase 4 (reconciliation engine) needs field-level comparison results to be
 -- both machine-readable and human-readable. The Phase 2 schema only stored a

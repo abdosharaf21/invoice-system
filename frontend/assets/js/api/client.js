@@ -55,22 +55,51 @@ async function parseBody(res) {
   return { json: null };
 }
 
-function toApiError(res, json) {
+function readRequestId(res) {
+  return res.headers.get("x-request-id") || null;
+}
+
+function toApiError(res, json, requestId = null) {
   if (json && json.message) {
     return new ApiError(json.message, {
       status: res.status,
       code: json.code,
       errors: json.errors,
+      details: requestId ? { request_id: requestId } : null,
     });
   }
   return new ApiError(`Request failed with status ${res.status}`, {
     status: res.status,
+    details: requestId ? { request_id: requestId } : null,
   });
+}
+
+/**
+ * Join the configured API base with an endpoint path.
+ *
+ * - base is either an origin ("http://localhost:5001") or a same-origin
+ *   mount ("/api") when the SPA is served on a non-localhost host.
+ * - paths passed by callers are full backend paths ("/api/auth/login"), so
+ *   a base that already ends with "/api" must not be prefixed twice —
+ *   otherwise the request leaves as "/api/api/auth/login" and every API call
+ *   breaks against the static origin.
+ */
+export function joinApiBase(base, path) {
+  const b = String(base ?? "").replace(/\/+$/, "");
+  if (!b) return path;
+  if (b === "/api" && (path === "/api" || path.startsWith("/api/"))) {
+    return path;
+  }
+  return `${b}/${String(path).replace(/^\/+/, "")}`;
+}
+
+function apiUrl(path) {
+  return path.startsWith("http") ? path : joinApiBase(CONFIG.apiBase, path);
 }
 
 async function request(path, { method = "GET", body, headers = {}, isForm = false } = {}) {
   const { access } = readTokenPair() || {};
-  const url = path.startsWith("http") ? path : `${CONFIG.apiBase}${path}`;
+  const url = apiUrl(path);
 
   const init = {
     method,
@@ -91,9 +120,11 @@ async function request(path, { method = "GET", body, headers = {}, isForm = fals
   let res = await fetch(url, init);
 
   // Single seamless retry on an expired access token.
+  let refreshed = false;
   if (res.status === 401 && access) {
-    const refreshed = await refreshTokens();
-    if (refreshed) {
+    const ok = await refreshTokens();
+    if (ok) {
+      refreshed = true;
       const { access: newAccess } = readTokenPair() || {};
       init.headers.Authorization = `Bearer ${newAccess}`;
       if (!isForm && body !== undefined) {
@@ -107,11 +138,12 @@ async function request(path, { method = "GET", body, headers = {}, isForm = fals
   const { json } = await parseBody(res);
 
   if (!res.ok) {
-    if (res.status === 401 && !json) {
-      // A purely auth failure (not JSON) still means re-authentication.
-      if (onAuthFailure) await onAuthFailure();
+    if (res.status === 401) {
+      // Either a purely non-JSON auth failure, or a 401 that survived a
+      // successful refresh — both mean the session cannot continue.
+      if ((!json || refreshed) && onAuthFailure) await onAuthFailure();
     }
-    throw toApiError(res, json);
+    throw toApiError(res, json, readRequestId(res));
   }
 
   return { res, json };
@@ -122,7 +154,7 @@ async function refreshTokens() {
   if (!refresh) return false;
 
   try {
-    const res = await fetch(`${CONFIG.apiBase}/api/auth/refresh`, {
+    const res = await fetch(apiUrl("/api/auth/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refresh }),
@@ -180,15 +212,41 @@ export const api = {
   async download(path, params) {
     const url = buildPath(path, params);
     const { access } = readTokenPair() || {};
-    const res = await fetch(CONFIG.apiBase + url, {
+    let res = await fetch(apiUrl(url), {
       method: "GET",
       headers: access ? { Authorization: `Bearer ${access}` } : {},
     });
 
+    // Seamless refresh + retry for an expired access token, mirroring
+    // `request`: silently retry once, then hand the session to the app.
+    let refreshed = false;
+    if (res.status === 401 && access) {
+      const ok = await refreshTokens();
+      if (ok) {
+        refreshed = true;
+        const { access: newAccess } = readTokenPair() || {};
+        res = await fetch(apiUrl(url), {
+          method: "GET",
+          headers: newAccess ? { Authorization: `Bearer ${newAccess}` } : {},
+        });
+      }
+    }
+
     if (!res.ok) {
       const { json } = await parseBody(res);
-      const err = json && json.message ? json.message : `Export failed with status ${res.status}`;
-      throw new ApiError(err, { status: res.status, code: json && json.code });
+      // A 401 that survived a successful refresh (or a non-JSON 401) means
+      // the session cannot continue. Refresh-failure already handled inside
+      // refreshTokens() — don't fire the handler a second time.
+      if (res.status === 401 && (!json || refreshed) && onAuthFailure) {
+        await onAuthFailure();
+      }
+      const message = json && json.message ? json.message : `Export failed with status ${res.status}`;
+      const requestId = readRequestId(res);
+      throw new ApiError(message, {
+        status: res.status,
+        code: json && json.code,
+        details: requestId ? { request_id: requestId } : null,
+      });
     }
 
     const blob = await res.blob();
@@ -236,5 +294,5 @@ function buildPath(path, params) {
 
 /** Normalized access to the request internals (used by tests). */
 export function _internal() {
-  return { request, buildPath, refreshTokens };
+  return { request, buildPath, refreshTokens, joinApiBase };
 }

@@ -31,8 +31,8 @@ def _make_user(role: str = None, is_active: bool = True) -> User:
     )
 
 
-def _make_service(repo=None):
-    return UserService(repo or MagicMock())
+def _make_service(repo=None, company_repo=None):
+    return UserService(repo or MagicMock(), company_repository=company_repo)
 
 
 # ---------------------------------------------------------------------------
@@ -220,3 +220,140 @@ class TestUserService:
 
         with pytest.raises(ValueError, match="last active admin"):
             service.delete_user(1)
+
+
+class TestCompanyValidation:
+    """Regression: non-existent company_id must yield a clean error,
+    not leak a raw DB integrity error as 'A database error occurred'."""
+
+    @staticmethod
+    def _make_company_repo(exists: bool = True):
+        company_repo = MagicMock()
+        company_repo.get_by_id.return_value = MagicMock() if exists else None
+        return company_repo
+
+    def test_create_rejects_nonexistent_company(self):
+        service = _make_service(
+            repo=_mock_repo_ok(),
+            company_repo=self._make_company_repo(exists=False),
+        )
+        with pytest.raises(ValueError, match="Company not found"):
+            service.create_user(_good_payload(company_id=999))
+
+    def test_create_allows_null_company(self):
+        repo = _mock_repo_ok()
+        service = _make_service(
+            repo=repo,
+            company_repo=self._make_company_repo(exists=False),
+        )
+        service.create_user(_good_payload(company_id=None))
+        created = repo.create.call_args[0][0]
+        assert created.company_id is None
+
+    def test_create_accepts_existing_company(self):
+        repo = _mock_repo_ok()
+        service = _make_service(
+            repo=repo,
+            company_repo=self._make_company_repo(exists=True),
+        )
+        service.create_user(_good_payload(company_id=22))
+        created = repo.create.call_args[0][0]
+        assert created.company_id == 22
+
+    def test_create_rejects_non_numeric_company_id(self):
+        """Non-integer company_id caught by validator before reaching DB."""
+        service = _make_service(
+            company_repo=self._make_company_repo(exists=False),
+        )
+        with pytest.raises(ValueError, match="must be an integer"):
+            service.create_user(_good_payload(company_id="abc"))
+
+    def test_create_rejects_leading_zeros_resolved_to_missing(self):
+        """The actual bug scenario: company_id '001' → int(1) → no such company."""
+        service = _make_service(
+            repo=_mock_repo_ok(),
+            company_repo=self._make_company_repo(exists=False),
+        )
+        with pytest.raises(ValueError, match="Company not found"):
+            service.create_user(_good_payload(company_id="001"))
+
+    def test_update_rejects_nonexistent_company(self):
+        repo = MagicMock()
+        repo.get_by_id.return_value = _make_user()
+        service = _make_service(
+            repo=repo,
+            company_repo=self._make_company_repo(exists=False),
+        )
+        with pytest.raises(ValueError, match="Company not found"):
+            service.update_user(1, {"company_id": 999})
+
+    def test_update_accepts_existing_company(self):
+        repo = MagicMock()
+        repo.get_by_id.return_value = _make_user()
+        repo.update.return_value = _make_user()
+        service = _make_service(
+            repo=repo,
+            company_repo=self._make_company_repo(exists=True),
+        )
+        service.update_user(1, {"company_id": 22})
+        repo.update.assert_called_once()
+
+    def test_no_db_error_leaks_for_bad_company(self):
+        """Ensure ValueError, not mysql.connector.IntegrityError, propagates."""
+        service = _make_service(
+            repo=_mock_repo_ok(),
+            company_repo=self._make_company_repo(exists=False),
+        )
+        with pytest.raises(ValueError, match="Company not found"):
+            service.create_user(_good_payload(company_id=1))
+
+
+def _good_payload(**overrides) -> dict:
+    base = {
+        "username": "test_valid",
+        "email": "test_valid@example.com",
+        "password": "password123",
+        "first_name": "Test",
+        "last_name": "Valid",
+        "company_id": 22,
+        "roles": ["viewer"],
+        "status": "active",
+    }
+    base.update(overrides)
+    return base
+
+
+def _mock_repo_ok():
+    repo = MagicMock()
+    repo.exists_by_username.return_value = False
+    repo.exists_by_email.return_value = False
+    repo.create.return_value = _make_user()
+    return repo
+
+
+class TestCompanyScopedUsers:
+    """Regression: the Users page showed 'No users yet' because the frontend
+    double-unwrapped the response AND the backend returned all users without
+    company scoping. These tests verify company-filtered user listing."""
+
+    def test_get_all_users_for_company_delegates_to_repository(self):
+        repo = MagicMock()
+        repo.get_all_by_company.return_value = [_make_user(), _make_user()]
+        service = _make_service(repo=repo)
+        users = service.get_all_users_for_company(22)
+        repo.get_all_by_company.assert_called_once_with(22)
+        assert len(users) == 2
+
+    def test_get_all_users_for_company_returns_empty_when_none_match(self):
+        repo = MagicMock()
+        repo.get_all_by_company.return_value = []
+        service = _make_service(repo=repo)
+        users = service.get_all_users_for_company(999)
+        assert users == []
+
+    def test_get_all_users_for_company_passes_correct_id(self):
+        repo = MagicMock()
+        repo.get_all_by_company.return_value = [_make_user()]
+        service = _make_service(repo=repo)
+        service.get_all_users_for_company(42)
+        repo.get_all_by_company.assert_called_once_with(42)

@@ -12,6 +12,7 @@ from flask_jwt_extended import (
     decode_token,
 )
 
+from backend.middleware.contract import error_response
 from backend.middleware.exceptions import (
     AppException,
 )
@@ -35,8 +36,8 @@ def _success(data, status: int = 200):
 
 
 def _error(message: str, status: int = 400):
-    """Standard error response."""
-    return {"success": False, "message": message}, status
+    """Standard error response using the canonical error envelope."""
+    return error_response(message, status)
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -129,16 +130,26 @@ def change_password():
 @auth_bp.errorhandler(AppException)
 def handle_app_exception(e):
     """Handle known application exceptions."""
-    return {"success": False, "message": e.message}, e.status_code
+    return e.to_dict(), e.status_code
 
 
 @auth_bp.errorhandler(422)
 def handle_422(e):
     """Handle JWT missing/invalid errors."""
-    return {"success": False, "message": "Missing or invalid token"}, 401
+    return {
+        "success": False,
+        "message": "Missing or invalid token",
+        "status": 401,
+        "code": "TOKEN_REQUIRED",
+    }, 401
 
 
 @auth_bp.errorhandler(401)
 def handle_401(e):
     """Handle unauthorized errors."""
-    return {"success": False, "message": str(e.description)}, 401
+    return {
+        "success": False,
+        "message": str(e.description),
+        "status": 401,
+        "code": "UNAUTHORIZED",
+    }, 401

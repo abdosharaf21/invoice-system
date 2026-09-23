@@ -43,7 +43,8 @@ def create_access_token_for_user(user: Any) -> str:
     """Issue a JWT access token carrying the user's identity and claims.
 
     Args:
-        user: A user object exposing id, email, role and full_name.
+        user: A user object exposing id, email, role, full_name and
+            company_id.
 
     Returns:
         The signed JWT access token string.
@@ -54,5 +55,6 @@ def create_access_token_for_user(user: Any) -> str:
             "email": user.email,
             "role": user.role,
             "full_name": user.full_name,
+            "company_id": getattr(user, "company_id", None),
         },
     )

@@ -18,6 +18,7 @@ class StubClassList {
 
 export class StubElement {
   constructor(tag) {
+    this.nodeType = 1;
     this.tagName = tag.toUpperCase();
     this.childNodes = [];
     this.parentNode = null;
@@ -58,6 +59,13 @@ export class StubElement {
     if (typeof child === "string") child = new StubText(child);
     child.parentNode = this;
     this.childNodes.push(child);
+    return child;
+  }
+
+  removeChild(child) {
+    const idx = this.childNodes.indexOf(child);
+    if (idx >= 0) this.childNodes.splice(idx, 1);
+    if (child) child.parentNode = null;
     return child;
   }
 
@@ -103,14 +111,44 @@ export class StubElement {
     (this.listeners[type] || []).forEach((fn) => fn.call(this, event));
   }
 
-  contains(node) { return this.childNodes.includes(node); }
+  contains(node) {
+    for (let cur = node; cur; cur = cur.parentNode) {
+      if (cur === this) return true;
+    }
+    return false;
+  }
   closest() { return null; }
-  querySelector() { return null; }
-  querySelectorAll() { return []; }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  querySelectorAll(selector) {
+    const out = [];
+    const visit = (node) => {
+      for (const child of node.childNodes || []) {
+        if (!child || child.nodeType === 3) continue;
+        if (matchesSelector(child, selector)) out.push(child);
+        visit(child);
+      }
+    };
+    visit(this);
+    return out;
+  }
   get elements() { return this.querySelectorAll("*"); }
-  focus() {}
+  focus() { globalThis.document.activeElement = this; }
   click() { this.dispatchEvent({ type: "click" }); }
   reset() { this.value = ""; }
+
+  cloneNode(deep = false) {
+    const clone = new StubElement(this.tagName);
+    for (const [key, value] of this.attributes) clone.attributes.set(key, value);
+    if (this.className) clone.className = this.className;
+    for (const child of this.childNodes) {
+      if (child.nodeType === 3) {
+        clone.appendChild(new StubText(child.textContent));
+      } else if (deep) {
+        clone.appendChild(child.cloneNode(true));
+      }
+    }
+    return clone;
+  }
 
   get className() { return this.attributes.get("className") || this.attributes.get("class") || ""; }
   set className(v) {
@@ -120,6 +158,20 @@ export class StubElement {
       this.classList._set = new Set(v.split(/\s+/).filter(Boolean));
     }
   }
+}
+
+/** Minimal selector matcher supporting "#id", ".class", "[attr=val]", tags and "*". */
+function matchesSelector(node, selector) {
+  const sel = String(selector).trim();
+  if (sel === "*") return true;
+  if (sel.startsWith("#")) return node.getAttribute("id") === sel.slice(1);
+  if (sel.startsWith(".")) return node.classList && node.classList.contains(sel.slice(1));
+  if (sel.startsWith("[")) {
+    const m = /^\[([\w-]+)=?["']?([^"'\]]*)["']?\]$/.exec(sel);
+    if (!m) return false;
+    return String(node.getAttribute(m[1])) === m[2];
+  }
+  return (node.tagName || "").toLowerCase() === sel.toLowerCase();
 }
 
 export class StubText {
@@ -133,10 +185,22 @@ const documentStub = {
   createTextNode(text) { return new StubText(text); },
   createDocumentFragment() { return new StubElement("#fragment"); },
   getElementById() { return null; },
-  querySelector() { return null; },
-  querySelectorAll() { return []; },
+  querySelector(selector) { return this.body.querySelector(selector); },
+  querySelectorAll(selector) { return this.body.querySelectorAll(selector); },
   body: new StubElement("body"),
-  addEventListener() {},
+  documentElement: new StubElement("html"),
+  activeElement: null,
+  _docListeners: {},
+  addEventListener(type, fn) { (this._docListeners[type] ||= []).push(fn); },
+  removeEventListener(type, fn) {
+    const list = this._docListeners[type] || [];
+    const idx = list.indexOf(fn);
+    if (idx >= 0) list.splice(idx, 1);
+  },
+  dispatchEvent(event) {
+    const type = event.type || "keydown";
+    (this._docListeners[type] || []).forEach((fn) => fn.call(this, event));
+  },
 };
 
 globalThis.document = documentStub;

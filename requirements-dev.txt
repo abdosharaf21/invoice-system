@@ -1,0 +1,7 @@
+# Development/test dependencies. Install alongside the runtime manifest:
+#   pip install -r requirements.txt -r requirements-dev.txt
+# pytest is a test-only tool and is intentionally NOT part of the production
+# dependency set (requirements.txt / requirements.lock.txt).
+-r requirements.txt
+# 9.x: PYSEC-2026-1845 affects pytest <=9.0.2 (dev-only, /tmp race); fixed in 9.0.3.
+pytest>=9.0.3,<10.0

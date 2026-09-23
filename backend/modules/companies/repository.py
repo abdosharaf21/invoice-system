@@ -30,7 +30,12 @@ class CompanyRepository:
             address=row[5],
             is_active=bool(row[6]),
             created_at=row[7],
-            updated_at=row[8]
+            updated_at=row[8],
+            logo_path=row[9] if len(row) > 9 else None,
+            website=row[10] if len(row) > 10 else None,
+            default_currency=row[11] if len(row) > 11 else "EGP",
+            default_tax_rate=float(row[12]) if len(row) > 12 and row[12] is not None else 0.0,
+            fiscal_year_start=row[13] if len(row) > 13 else "01-01",
         )
 
     def create(self, company: Company) -> Company:
@@ -108,7 +113,9 @@ class CompanyRepository:
                     UPDATE companies
                     SET name = %s, tax_registration_number = %s,
                         email = %s, phone = %s, address = %s,
-                        is_active = %s, updated_at = NOW()
+                        is_active = %s, logo_path = %s, website = %s,
+                        default_currency = %s, default_tax_rate = %s,
+                        fiscal_year_start = %s, updated_at = NOW()
                     WHERE id = %s
                 """
                 cursor.execute(query, (
@@ -118,6 +125,11 @@ class CompanyRepository:
                     company.phone,
                     company.address,
                     company.is_active,
+                    company.logo_path,
+                    company.website,
+                    company.default_currency,
+                    company.default_tax_rate,
+                    company.fiscal_year_start,
                     company.id
                 ))
                 conn.commit()

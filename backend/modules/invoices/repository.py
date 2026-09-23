@@ -1,7 +1,7 @@
 """Invoice repository for database operations on the invoices and invoice_items tables."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import mysql.connector
 
@@ -34,6 +34,7 @@ class InvoiceRepository:
             currency=row[8],
             counterparty_name=row[9],
             counterparty_tax_id=row[10],
+            counterparty_email=row[18],
             subtotal_amount=row[11],
             discount_amount=row[12],
             vat_amount=row[13],
@@ -62,6 +63,23 @@ class InvoiceRepository:
         cursor.execute(query, (invoice_id,))
         return [self._row_to_item(row) for row in cursor.fetchall()]
 
+    def _load_items_batch(self, cursor, invoice_ids) -> Dict[int, List[InvoiceItem]]:
+        """Load items for many invoices in one query, keyed by invoice id."""
+        ids = [invoice_id for invoice_id in invoice_ids if invoice_id is not None]
+        if not ids:
+            return {}
+        placeholders = ", ".join(["%s"] * len(ids))
+        query = (
+            f"SELECT * FROM invoice_items WHERE invoice_id IN ({placeholders}) "
+            "ORDER BY invoice_id, id"
+        )
+        cursor.execute(query, ids)
+        grouped: Dict[int, List[InvoiceItem]] = {}
+        for row in cursor.fetchall():
+            item = self._row_to_item(row)
+            grouped.setdefault(item.invoice_id, []).append(item)
+        return grouped
+
     def create(self, invoice: Invoice) -> Invoice:
         with self._database.connection() as conn, db_cursor(conn) as cursor:
             try:
@@ -69,10 +87,10 @@ class InvoiceRepository:
                     INSERT INTO invoices
                         (uuid, company_id, import_batch_id, invoice_number,
                          invoice_type, invoice_date, due_date, currency,
-                         counterparty_name, counterparty_tax_id,
+                         counterparty_name, counterparty_tax_id, counterparty_email,
                          subtotal_amount, discount_amount, vat_amount,
                          total_amount, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(query, (
                     invoice.uuid,
@@ -85,6 +103,7 @@ class InvoiceRepository:
                     invoice.currency,
                     invoice.counterparty_name,
                     invoice.counterparty_tax_id,
+                    invoice.counterparty_email,
                     invoice.subtotal_amount,
                     invoice.discount_amount,
                     invoice.vat_amount,
@@ -183,8 +202,11 @@ class InvoiceRepository:
                 """
                 cursor.execute(query, (company_id, limit, offset))
                 invoices = [self._row_to_invoice(row) for row in cursor.fetchall()]
+                items_by_id = self._load_items_batch(
+                    cursor, [invoice.id for invoice in invoices]
+                )
                 for invoice in invoices:
-                    invoice.items = self._load_items(cursor, invoice.id)
+                    invoice.items = items_by_id.get(invoice.id, [])
                 return invoices
             except mysql.connector.Error:
                 raise
@@ -200,8 +222,11 @@ class InvoiceRepository:
                 """
                 cursor.execute(query, (company_id, f"{period}%"))
                 invoices = [self._row_to_invoice(row) for row in cursor.fetchall()]
+                items_by_id = self._load_items_batch(
+                    cursor, [invoice.id for invoice in invoices]
+                )
                 for invoice in invoices:
-                    invoice.items = self._load_items(cursor, invoice.id)
+                    invoice.items = items_by_id.get(invoice.id, [])
                 return invoices
             except mysql.connector.Error:
                 raise

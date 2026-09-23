@@ -1,4 +1,5 @@
 -- Migration 002: E-Invoice domain tables.
+-- verify: reconciliation_runs
 --
 -- Adds the Phase 2 domain schema on top of the reconciled foundation:
 --   * import tracking  -> import_batches, import_batch_errors

@@ -97,6 +97,7 @@ class Invoice:
         currency: str = "EGP",
         counterparty_name: Optional[str] = None,
         counterparty_tax_id: Optional[str] = None,
+        counterparty_email: Optional[str] = None,
         subtotal_amount: float = 0.0,
         discount_amount: float = 0.0,
         vat_amount: float = 0.0,
@@ -117,6 +118,7 @@ class Invoice:
         self.currency = currency
         self.counterparty_name = counterparty_name
         self.counterparty_tax_id = counterparty_tax_id
+        self.counterparty_email = counterparty_email
         self.subtotal_amount = subtotal_amount
         self.discount_amount = discount_amount
         self.vat_amount = vat_amount
@@ -139,6 +141,7 @@ class Invoice:
             "currency": self.currency,
             "counterparty_name": self.counterparty_name,
             "counterparty_tax_id": self.counterparty_tax_id,
+            "counterparty_email": self.counterparty_email,
             "subtotal_amount": float(self.subtotal_amount),
             "discount_amount": float(self.discount_amount),
             "vat_amount": float(self.vat_amount),
@@ -163,6 +166,7 @@ class Invoice:
             currency=data.get("currency", "EGP"),
             counterparty_name=data.get("counterparty_name"),
             counterparty_tax_id=data.get("counterparty_tax_id"),
+            counterparty_email=data.get("counterparty_email"),
             subtotal_amount=data.get("subtotal_amount", 0.0),
             discount_amount=data.get("discount_amount", 0.0),
             vat_amount=data.get("vat_amount", 0.0),

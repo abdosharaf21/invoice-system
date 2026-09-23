@@ -1,7 +1,11 @@
+# Runtime/production dependencies (see requirements-dev.txt for test tooling).
+# Policy: each line is bounded (>= and <) — no floating or "*" constraints;
+# the generated requirements.lock.txt pins the exact resolution for production.
 Flask>=3.0,<4.0
 flask-jwt-extended>=4.6,<5.0
 bcrypt>=4.0,<5.0
-mysql-connector-python>=8.3,<9.0
+# 9.x: PYSEC-2026-1685 / CVE-2024-21272 affects all <=9.0.0; fixed in 9.1.0.
+mysql-connector-python>=9.1.0,<10.0
 python-dotenv>=1.0,<2.0
 openpyxl>=3.1,<4.0
-pytest>=8.0,<9.0
+gunicorn>=23.0,<24.0

@@ -9,6 +9,18 @@ records against invoices submitted to the tax authority.
 - MySQL 8 (raw SQL via a shared connection pool, no ORM)
 - JWT auth (access + refresh tokens) with bcrypt password hashing
 
+## API reference
+
+The **authoritative** HTTP API contract is `docs/api/openapi.yaml` (OpenAPI 3).
+Every endpoint is exposed under the stable, documented **`/api/v1`** namespace
+and, as a compatibility alias, under the unversioned **`/api`** prefix —
+both resolve to the same handlers (see `backend/app.py::register_api_v1_aliases`).
+Routes, methods, request/response schemas, error codes, rate limits,
+`X-Request-Id` correlation and deprecation behavior are described there; do
+not hand-duplicate routes elsewhere. Health (`/api/health`) and readiness
+(`/api/health/ready`) plus the day-to-day operator procedures live in
+`deploy/OPERATIONS.md`.
+
 ## Project layout
 
 ```
@@ -62,21 +74,52 @@ Key design decisions:
 
 ## Database migrations
 
-Migrations are plain, numbered SQL files under `backend/database/migrations/`.
-Apply them in order against the configured database:
+Migrations are plain, numbered SQL files under `backend/database/migrations/`
+(000…012). `000_foundation_schema.sql` bootstraps the base tables
+(`companies`/`users`/`roles`/`user_roles`) so the catalog is self-contained —
+a fresh database can be fully migrated without any hand-provisioned schema
+(see the Phase 12 report). Applying them by hand against the configured
+database:
 
 ```bash
-mysql -h $DB_HOST -u $DB_USER -p $DB_NAME \
-  < backend/database/migrations/001_reconcile_foundation_schema.sql
-mysql -h $DB_HOST -u $DB_USER -p $DB_NAME \
-  < backend/database/migrations/002_einvoice_domain.sql
-mysql -h $DB_HOST -u $DB_USER -p $DB_NAME \
-  < backend/database/migrations/003_import_columns.sql
-mysql -h $DB_HOST -u $DB_USER -p $DB_NAME \
-  < backend/database/migrations/004_reconciliation_error_columns.sql
-mysql -h $DB_HOST -u $DB_USER -p $DB_NAME \
-  < backend/database/migrations/005_widen_reconciliation_match_status.sql
+for f in backend/database/migrations/*.sql; do
+  mysql -h $DB_HOST -u $DB_USER -p$DB_PASSWORD $DB_NAME < "$f"
+done
 ```
+
+For production, use the deterministic runner `deploy/migrate.sh` instead. It:
+
+- records every applied file in a `schema_migrations` table with a SHA-256
+  checksum of the file content,
+- **audits** already-applied checksums and refuses to run when recorded and
+  on-disk digests disagree (drift), unless `--accept-drift` is given,
+- takes a pre-migration backup (`deploy/backup.sh`) before the first pending
+  file — skipped automatically for a brand-new empty database,
+- applies pending files in order, verifies each one (exit status +
+  `-- verify: <table>` row-count hints), and records a file only after success.
+
+The current live database is migrated through `011`; migration
+`012_reconcile_discrepancy_range.sql` (Phase 15) exists in the catalog and is
+**pending** until the next upgrade run. `deploy/migrate.sh --check` reports the
+live status, drift and orphans read-only, and `schema_verify` reflects the
+target state (a live DB at `011` reports drift until `012`-equivalent state is
+reached, as expected).
+
+Other modes: `--check` (read-only status + drift audit), `--record-existing`
+(seed the tracker for databases already migrated by hand). Drift against the
+golden target schema can also be inspected with
+`schema_verify`:
+
+```bash
+PYTHONPATH=. .venv/bin/python -m backend.database.schema_verify --db <database>
+```
+
+That command compares the live `information_schema` against the expected
+manifest (`backend/database/schema_manifest.py`) and exits 0 when in sync,
+1 when drift is found, 2 on error. Combined with `deploy/backup.sh` the
+workflow is backup → migrate → verify → rollback. See `deploy/DEPLOYMENT.md`
+for the full production playbook (Gunicorn, Nginx, HTTPS, systemd, firewall,
+backups), and `deploy/DISASTER_RECOVERY.md` for the restore drill.
 
 Copy `.env.example` to `.env` and set real credentials before running.
 
@@ -375,8 +418,18 @@ cd frontend
 python3 -m http.server 8080 --directory .
 ```
 
-By default the JS targets `http://localhost:5001` (the Flask backend). Override
-at runtime without rebuilding: open `http://localhost:8080/?api=http://host:port`.
+By default on localhost the JS targets `http://localhost:5001` (the Flask
+backend). Override at runtime without rebuilding: open
+`http://localhost:8080/?api=http://host:port`, or set `window.__EIS_API_BASE__`
+for the whole deployment. When the SPA is served from a **non-localhost**
+host in production, the API defaults to the same origin via `/api` (e.g. an
+Nginx server block proxying `/api` to Gunicorn) — no source edit per
+environment. See `frontend/assets/js/config.js`.
+
+**Production**: serve the SPA from Nginx and run the API on Gunicorn behind it
+(Nginx → Gunicorn → Flask → MySQL). Do **not** launch the Flask dev server in
+production — `FLASK_ENV=production` refuses to. Full playbook:
+`deploy/DEPLOYMENT.md`.
 
 Authentication gates the UI on the same claims as the backend: the sidebar
 only shows sections the current role is allowed to use, anonymous users are
@@ -443,6 +496,175 @@ cd frontend && python3 -m http.server 8080 --directory .
   backend requires the `admin`/`accountant`/`manager` roles; the UI hides
   those sections and the backend enforces them.
 
+## Settings (Phase 6.5)
+
+Application-wide, organisation, and per-user settings that persist in the
+database and are consumed by both the API and the SPA shell (application and
+company names are rendered from settings, never hard-coded).
+
+### Data model
+
+`006_settings.sql` adds:
+
+- `application_settings` — a generic key/value table. Keys are unique; values
+  carry a `value_type` (`string`, `integer`, `boolean`, `json`) so reads return
+  typed values. Eight defaults are seeded (`application_name`,
+  `application_subtitle`, `default_language`, `default_theme`, `date_format`,
+  `number_format`, `timezone`, `pagination_size`).
+- `companies` gain `logo_path`, `website`, `default_currency`,
+  `default_tax_rate`, `fiscal_year_start`.
+- `users` gain `language`, `theme`, `date_format`, `number_format`,
+  `timezone`, `avatar_path`, `pagination_size`.
+
+### API
+
+| Method | Path | Access | Purpose |
+| ------ | ---- | ------ | ------- |
+| GET | `/api/settings/application` | any authenticated user | safe frontend subset (8 keys) |
+| PUT | `/api/settings/application` | admin | update one or more application settings |
+| GET | `/api/settings/application/all` | admin | every setting including non-frontend ones |
+| GET | `/api/settings/company` | any authenticated user | the caller's own company profile |
+| PUT | `/api/settings/company` | admin | update the caller's company settings |
+| GET | `/api/settings/user` | any authenticated user | the caller's own preferences |
+| PUT | `/api/settings/user` | any authenticated user | update *only* the caller's preferences |
+
+Validation (`backend/modules/settings/validator.py`): languages `en/ar/fr/de/es`,
+themes `light/dark`, date formats `YYYY-MM-DD | DD/MM/YYYY | MM/DD/YYYY |
+DD-MM-YYYY`, number formats `#,##0.00 | #,##0 | 0,00 | 0.00`, pagination
+5–200, plus email/currency/tax-rate/fiscal-year checks for company settings.
+Invalid values are rejected with a `400` and an explanatory message. Password
+changes remain on the existing `/api/auth/change-password` endpoint.
+
+The API validator accepts all five languages, but the Settings UI currently
+offers only the two with shipped dictionaries (`en`, `ar`) — the other values
+are reserved for future dictionaries.
+
+Company writes require an admin but are always scoped to the admin's own
+company (resolved from the authenticated user, never from the request body).
+
+### Frontend
+
+The SPA gains a `#/settings` route (reachable from the account menu) with three
+sections: **Application** and **Company** (admin only) and **My profile** (all
+roles). The shell reads application/company settings via
+`frontend/assets/js/settings/store.js` so the sidebar brand, document title,
+and company label reflect the stored values.
+
+## Email notifications (Phase 7)
+
+Outbound, send-only email notifications. The backend submits fully-formed
+messages to an SMTP server with `smtplib`; it never opens, reads, imports,
+synchronizes or deletes mailbox items (no Gmail read/inbox APIs, no OAuth).
+
+Notifications are sent to the **taxpayers/counterparties** of a run — the
+companies and individuals your invoices involve — never to internal users
+and never to the organisation's billing address. After a reconciliation run
+finishes, every taxpayer with at least one affected invoice (mismatched,
+missing from the tax authority records, or invalid) receives a single grouped
+summary email naming only their affected invoices and the differences to
+review.
+
+### Configuration
+
+All email settings come from environment variables (`.env`). When
+`EMAIL_ENABLED=true` the application validates the configuration at startup
+and refuses to boot if it is unusable. Credentials are never exposed through
+the API or logged.
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `EMAIL_ENABLED` | `false` | master switch; `false` = sending disabled (and deliveries are recorded as `skipped`) |
+| `EMAIL_PROVIDER` | `smtp` | `smtp` (generic) or `gmail` |
+| `EMAIL_HOST` | (empty) | SMTP server host; `smtp.gmail.com` for Gmail |
+| `EMAIL_PORT` | `587` | SMTP port (465 with implicit TLS + `EMAIL_USE_SSL=true`) |
+| `EMAIL_USERNAME` | (empty) | optional SMTP login user (requires `EMAIL_PASSWORD`) |
+| `EMAIL_PASSWORD` | (empty) | optional SMTP login password (never logged/returned) |
+| `EMAIL_FROM` | (empty) | envelope `From` address (required when enabled) |
+| `EMAIL_USE_TLS` | `true` | STARTTLS after connect |
+| `EMAIL_USE_SSL` | `false` | implicit TLS (mutually exclusive with `EMAIL_USE_TLS`) |
+
+There is no recipient-role configuration: recipients come from the accounting
+data, not from application settings.
+
+### Recipients
+
+Recipient email addresses are captured during invoice import and stored on the
+accounting invoice as `counterparty_email` (migration 007, an optional column
+added `AFTER updated_at` so the existing positional row mapping is untouched).
+During planning the run's affected invoices are grouped by taxpayer:
+
+1. invoices whose invoice has a valid `counterparty_email` are grouped per
+   email address — one delivery per taxpayer per run;
+2. counterparties with no email on record produce a single `no_email` delivery
+   (with a recorded reason, never a send attempt);
+3. counterparties with an unparsable address produce a single `invalid`
+   delivery.
+
+### Delivery tracking
+
+Every planned delivery is recorded in the `email_deliveries` table (one row
+per run + recipient), so every run has an auditable list:
+
+| Status | Meaning |
+| ------ | ------- |
+| `pending` | recorded, send not yet attempted |
+| `sent` | SMTP accepted the message |
+| `failed` | SMTP rejected/timed out; `failure_reason` is recorded |
+| `skipped` | email sending disabled in the configuration |
+| `no_email` | taxpayer has no email address on record |
+| `invalid` | taxpayer email address is invalid |
+
+`sent` and `failed` carry the originating `X-Request-Id` correlation id and
+attempt timestamps (`attempted_at`, `sent_at`). Non-send rows keep the reason
+the send did not happen.
+
+### Delivery behavior
+
+- Notifications are planned and attempted **after** the reconciliation
+  transaction has committed; an email failure can never roll back or corrupt
+  a run.
+- `notify_run_summary` is best-effort: empty result sets, a disabled module
+  and SMTP failures are all recorded and never raise into the reconciliation
+  service.
+- No retry loop is used. A `failed`/`pending`/`skipped` delivery can be
+  resent explicitly from the run's delivery list; the message is rebuilt from
+  the persisted affected results (nothing sensitive is stored or replayed).
+- Every outbound message is HTML-escaped and contains only business
+  identifiers (invoice number, date, status, amounts); internal database ids,
+  request ids, JWTs, SMTP credentials and stack traces are never included.
+
+Templates (`backend/modules/email/templates.py`) render plain-text + HTML
+versions of the reconciliation discrepancy summary via
+`render_reconciliation_discrepancy(context)`.
+
+### API
+
+| Method | Path | Access | Purpose |
+| ------ | ---- | ------ | ------- |
+| GET | `/api/email/status` | admin | enabled flag, provider, host/port, from address, workflows (no credentials) |
+| POST | `/api/email/test` | admin | send one test message to the single address in the body |
+| GET | `/api/reconciliation/runs/:id/email-deliveries` | admin, accountant, manager | tracked deliveries for a run (company-scoped) |
+| POST | `/api/reconciliation/runs/:id/email-deliveries/:delivery_id/resend` | admin, accountant, manager | explicitly resend one delivery |
+
+`POST /api/email/test` is the only diagnostic send-forced endpoint. It is
+admin-only, takes exactly one recipient that the admin explicitly provides,
+and returns `400` when email is disabled or the address is invalid and `502`
+on SMTP failure. It is never an open relay. Resend is company-scoped to the
+run and returns `400` when email is disabled or the stored recipient is
+invalid and `502` on SMTP failure.
+
+### Files
+
+`backend/modules/email/` — `provider.py` (smtplib transport + config
+validation), `validator.py` (recipient checks), `templates.py`,
+`model.py` + `repository.py` (`email_deliveries` tracking), `service.py`
+(recipient planning, delivery and audit), `routes.py` (admin status/test
+endpoints). The reconciliation service (`service.py`,
+`routes.py`) invokes the summary notification after a completed run and
+exposes the delivery list + resend endpoints. Migration
+`backend/database/migrations/007_email_deliveries.sql` adds
+`invoices.counterparty_email` and creates `email_deliveries`.
+
 ## Running tests
 
 ```bash
@@ -450,3 +672,24 @@ cd frontend && python3 -m http.server 8080 --directory .
 ```
 
 The suite runs against fully mocked repositories — no database required.
+
+## Dependency management (Phase 13)
+
+Python 3.12 + Flask runtime, MySQL 8, JWT + bcrypt.
+
+- `requirements.txt` — **runtime/production** manifest: every entry is a bounded
+  range (`name>=a,<b`), no floating versions.
+- `requirements.lock.txt` — **autogenerated, exact-pinned** resolution of the
+  runtime manifest (direct *and* transitive). Production and restore drills
+  install from this file for byte-identical environments.
+- `requirements-dev.txt` / `requirements-dev.lock.txt` — development manifest
+  (`-r requirements.txt` + pytest). `pytest` is intentionally **not** in the
+  production set. Use `pip install -r requirements.txt -r requirements-dev.txt`.
+- `frontend/package-lock.json` — npm lockfile (lockfileVersion 3) verifying the
+  frontend pins **zero** dependencies; there is no build step and no CDN use.
+
+Change policy: never edit a lockfile by hand. After a deliberate dependency
+change, regenerate in a clean venv (`python3 -m venv /tmp/lockgen && /tmp/lockgen
+/bin/pip install -r requirements.txt`), update the affected `RUNTIME_*` /
+`DEV_ONLY_*` inventory sets in `backend/tests/test_dependency_manifest.py`, and
+re-run `deploy/check_dependencies.sh` (add `--online` for pip-audit + npm audit).

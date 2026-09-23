@@ -1,13 +1,13 @@
 """User routes for user-related API endpoints."""
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, g, request, jsonify
 from flask_jwt_extended import (
-    jwt_required,
     get_jwt_identity,
     get_jwt
 )
 
 from backend.modules.users.service import UserService
+from backend.middleware.contract import deprecated_response, error_response
 from backend.middleware.rbac import require_admin, require_authenticated
 
 users_bp = Blueprint("users", __name__, url_prefix="/api/users")
@@ -23,70 +23,97 @@ def init_user_service(user_service: UserService, blocklist: set = None) -> None:
     _blocklist = blocklist
 
 
+def _error(message: str, status: int) -> tuple:
+    """Build an error response using the canonical error envelope.
+
+    Args:
+        message: Human-readable error message.
+        status: HTTP status code.
+
+    Returns:
+        JSON payload with success, message, status and machine-readable code.
+    """
+    code = "INVALID_CREDENTIALS" if status == 401 else None
+    return error_response(message, status, code=code)
+
+
 @users_bp.route("/login", methods=["POST"])
 def login():
-    """Authenticate a user."""
+    """Authenticate a user (legacy alias superseded by ``POST /api/auth/login``)."""
     data = request.get_json()
     try:
         validated_email = data.get("email")
         validated_password = data.get("password")
 
         if not validated_email:
-            return jsonify({"success": False, "message": "Email is required"}), 400
+            return _error("Email is required", 400)
 
         if not validated_password:
-            return jsonify({"success": False, "message": "Password is required"}), 400
+            return _error("Password is required", 400)
 
         result = _user_service.login(validated_email, validated_password)
-        return jsonify({
-            "success": True,
-            "message": "Login successful",
-            "data": result
-        }), 200
+        return deprecated_response(
+            {
+                "success": True,
+                "message": "Login successful",
+                "data": result,
+            },
+            200,
+            successor="/api/auth/login",
+        )
     except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 401
+        return _error(str(e), 401)
 
 
 @users_bp.route("/logout", methods=["POST"])
 @require_authenticated
 def logout():
-    """Logout current user by revoking the JWT token."""
+    """Logout current user by revoking the JWT token (legacy alias of ``/api/auth/logout``)."""
     try:
         jwt_data = get_jwt()
         jti = jwt_data["jti"]
         _user_service.logout(jti)
-        return jsonify({
-            "success": True,
-            "message": "Logout successful"
-        }), 200
+        return deprecated_response(
+            {"success": True, "message": "Logout successful"},
+            200,
+            successor="/api/auth/logout",
+        )
     except Exception:
-        return jsonify({
-            "success": False,
-            "message": "Failed to logout"
-        }), 500
+        return _error("Failed to logout", 500)
 
 
 @users_bp.route("/me", methods=["GET"])
 @require_authenticated
 def get_current_user():
-    """Get the current authenticated user."""
+    """Get the current authenticated user (legacy alias of ``/api/auth/me``)."""
     try:
         user_id = get_jwt_identity()
         user = _user_service.get_user_by_id(int(user_id))
-        return jsonify({
-            "success": True,
-            "message": "User retrieved successfully",
-            "data": user.to_dict()
-        }), 200
+        return deprecated_response(
+            {
+                "success": True,
+                "message": "User retrieved successfully",
+                "data": user.to_dict(),
+            },
+            200,
+            successor="/api/auth/me",
+        )
     except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 404
+        return _error(str(e), 404)
 
 
 @users_bp.route("/", methods=["GET"])
 @require_admin
 def get_all_users():
-    """Get all users."""
-    users = _user_service.get_all_users()
+    """Get all users for the admin's company."""
+    admin = _user_service.get_user_by_id(g.user_id)
+    if not admin.company_id:
+        return jsonify({
+            "success": True,
+            "message": "Users retrieved successfully",
+            "data": []
+        }), 200
+    users = _user_service.get_all_users_for_company(admin.company_id)
     return jsonify({
         "success": True,
         "message": "Users retrieved successfully",
@@ -99,14 +126,14 @@ def get_all_users():
 def get_user(user_id):
     """Get a user by ID."""
     try:
-        user = _user_service.get_user_by_id(user_id)
+        user = _user_service.get_user_by_id(user_id, g.user_company_id)
         return jsonify({
             "success": True,
             "message": "User retrieved successfully",
             "data": user.to_dict()
         }), 200
     except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 404
+        return _error(str(e), 404)
 
 
 @users_bp.route("/", methods=["POST"])
@@ -127,22 +154,22 @@ def create_user():
         }
 
         if not validated_data["username"]:
-            return jsonify({"success": False, "message": "Username is required"}), 400
+            return _error("Username is required", 400)
 
         if not validated_data["email"]:
-            return jsonify({"success": False, "message": "Email is required"}), 400
+            return _error("Email is required", 400)
 
         if not validated_data["password"]:
-            return jsonify({"success": False, "message": "Password is required"}), 400
+            return _error("Password is required", 400)
 
-        user = _user_service.create_user(validated_data)
+        user = _user_service.create_user(validated_data, g.user_company_id)
         return jsonify({
             "success": True,
             "message": "User created successfully",
             "data": user.to_dict()
         }), 201
     except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 400
+        return _error(str(e), 400)
 
 
 @users_bp.route("/<int:user_id>", methods=["PUT"])
@@ -151,14 +178,14 @@ def update_user(user_id):
     """Update an existing user."""
     data = request.get_json()
     try:
-        user = _user_service.update_user(user_id, data)
+        user = _user_service.update_user(user_id, data, g.user_company_id)
         return jsonify({
             "success": True,
             "message": "User updated successfully",
             "data": user.to_dict()
         }), 200
     except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 400
+        return _error(str(e), 400)
 
 
 @users_bp.route("/<int:user_id>/password", methods=["PUT"])
@@ -169,12 +196,12 @@ def change_password(user_id):
     try:
         new_password = data.get("new_password")
         if not new_password:
-            return jsonify({"success": False, "message": "New password is required"}), 400
+            return _error("New password is required", 400)
 
-        _user_service.change_password(user_id, new_password)
+        _user_service.change_password(user_id, new_password, g.user_company_id)
         return jsonify({"success": True, "message": "Password changed successfully"}), 200
     except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 400
+        return _error(str(e), 400)
 
 
 @users_bp.route("/<int:user_id>/activate", methods=["PUT"])
@@ -182,14 +209,14 @@ def change_password(user_id):
 def activate_user(user_id):
     """Activate a user account."""
     try:
-        user = _user_service.activate_user(user_id)
+        user = _user_service.activate_user(user_id, g.user_company_id)
         return jsonify({
             "success": True,
             "message": "User activated successfully",
             "data": user.to_dict()
         }), 200
     except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 400
+        return _error(str(e), 400)
 
 
 @users_bp.route("/<int:user_id>/deactivate", methods=["PUT"])
@@ -197,14 +224,14 @@ def activate_user(user_id):
 def deactivate_user(user_id):
     """Deactivate a user account."""
     try:
-        user = _user_service.deactivate_user(user_id)
+        user = _user_service.deactivate_user(user_id, g.user_company_id)
         return jsonify({
             "success": True,
             "message": "User deactivated successfully",
             "data": user.to_dict()
         }), 200
     except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 400
+        return _error(str(e), 400)
 
 
 @users_bp.route("/<int:user_id>", methods=["DELETE"])
@@ -212,7 +239,7 @@ def deactivate_user(user_id):
 def delete_user(user_id):
     """Delete a user."""
     try:
-        _user_service.delete_user(user_id)
+        _user_service.delete_user(user_id, g.user_company_id)
         return jsonify({"success": True, "message": "User deleted successfully"}), 200
     except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 404
+        return _error(str(e), 404)

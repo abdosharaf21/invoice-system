@@ -29,7 +29,12 @@ class Company:
         address: Optional[str] = None,
         is_active: bool = True,
         created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None
+        updated_at: Optional[datetime] = None,
+        logo_path: Optional[str] = None,
+        website: Optional[str] = None,
+        default_currency: str = "EGP",
+        default_tax_rate: float = 0.0,
+        fiscal_year_start: str = "01-01",
     ) -> None:
         self.id = id
         self.name = name
@@ -40,6 +45,11 @@ class Company:
         self.is_active = is_active
         self.created_at = created_at or datetime.now()
         self.updated_at = updated_at or datetime.now()
+        self.logo_path = logo_path
+        self.website = website
+        self.default_currency = default_currency
+        self.default_tax_rate = default_tax_rate
+        self.fiscal_year_start = fiscal_year_start
 
     def to_dict(self) -> dict:
         return {
@@ -51,7 +61,12 @@ class Company:
             "address": self.address,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "logo_path": self.logo_path,
+            "website": self.website,
+            "default_currency": self.default_currency,
+            "default_tax_rate": self.default_tax_rate,
+            "fiscal_year_start": self.fiscal_year_start,
         }
 
     @classmethod

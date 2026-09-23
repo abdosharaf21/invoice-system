@@ -41,6 +41,7 @@ class _MockRepos:
         self.tax_repo = None
         self.recon_repo = None
         self.reconciliation_service = None
+        self.audit_repo = None
 
 
 @pytest.fixture
@@ -49,21 +50,21 @@ def mock_repos():
     return _MockRepos()
 
 
-@pytest.fixture
-def app(mock_repos):
-    """Create a fully mocked Flask application for testing.
+def _start_app_patches(mock_repos):
+    """Start the repository/service patches used to mock the app.
 
-    Patches every repository + Database internals so the app
-    starts without a real database.
+    Returns the list of started patches so the caller can stop them.
     """
     user_repo_mock = MagicMock()
     auth_repo_mock = MagicMock()
+    auth_repo_mock.is_blocklisted.return_value = False
     batch_repo_mock = MagicMock()
     invoice_repo_mock = MagicMock()
     import_service_mock = MagicMock()
     tax_repo_mock = MagicMock()
     recon_repo_mock = MagicMock()
     reconciliation_service_mock = MagicMock()
+    audit_repo_mock = MagicMock()
 
     import_service_mock.company_for_user.return_value = 1
     reconciliation_service_mock.company_for_user.return_value = 1
@@ -82,6 +83,7 @@ def app(mock_repos):
             "backend.app.ReconciliationService",
             return_value=reconciliation_service_mock,
         ),
+        patch("backend.app.AuditTrailRepository", return_value=audit_repo_mock),
         patch("backend.database.connection.Database._initialize_pool"),
     ]
 
@@ -96,7 +98,18 @@ def app(mock_repos):
     mock_repos.tax_repo = tax_repo_mock
     mock_repos.recon_repo = recon_repo_mock
     mock_repos.reconciliation_service = reconciliation_service_mock
+    mock_repos.audit_repo = audit_repo_mock
 
+    return patches
+
+
+@pytest.fixture
+def app(mock_repos):
+    """Create a fully mocked Flask application for testing.
+
+    Patches every repository + Database internals so the app
+    starts without a real database.
+    """
     from backend.app import create_app
 
     test_config = {
@@ -105,8 +118,11 @@ def app(mock_repos):
         "JWT_SECRET_KEY": _JWT_SECRET,
         "JWT_ACCESS_TOKEN_EXPIRES": timedelta(hours=1),
         "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),
+        "EMAIL_ENABLED": False,
+        "SERVE_STATIC": False,
     }
 
+    patches = _start_app_patches(mock_repos)
     application = create_app(config=test_config)
     yield application
 
@@ -118,6 +134,35 @@ def app(mock_repos):
 def client(app):
     """Flask test client bound to the mocked app."""
     return app.test_client()
+
+
+@pytest.fixture
+def static_serving_app(mock_repos, tmp_path):
+    """Mocked app with SERVE_STATIC enabled pointing at a temp SPA dist."""
+    from backend.app import create_app
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html><body>SPA</body></html>")
+    (dist / "assets" / "app.js").write_text("console.log('app')")
+
+    test_config = {
+        "TESTING": True,
+        "SECRET_KEY": _JWT_SECRET,
+        "JWT_SECRET_KEY": _JWT_SECRET,
+        "JWT_ACCESS_TOKEN_EXPIRES": timedelta(hours=1),
+        "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=30),
+        "EMAIL_ENABLED": False,
+        "SERVE_STATIC": True,
+        "FRONTEND_DIST": str(dist),
+    }
+
+    patches = _start_app_patches(mock_repos)
+    application = create_app(config=test_config)
+    yield application
+
+    for p in patches:
+        p.stop()
 
 
 # ---------------------------------------------------------------------------

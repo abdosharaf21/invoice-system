@@ -24,42 +24,42 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(BadRequestException)
     def handle_bad_request(error):
-        logger.warning("Bad request: %s %s - %s", request.method, request.url, error.message)
+        logger.warning("Bad request: %s %s - %s", request.method, request.path, error.message)
         return jsonify(error.to_dict()), 400
 
     @app.errorhandler(UnauthorizedException)
     def handle_unauthorized(error):
-        logger.warning("Unauthorized: %s %s - %s", request.method, request.url, error.message)
+        logger.warning("Unauthorized: %s %s - %s", request.method, request.path, error.message)
         return jsonify(error.to_dict()), 401
 
     @app.errorhandler(ForbiddenException)
     def handle_forbidden(error):
-        logger.warning("Forbidden: %s %s - %s", request.method, request.url, error.message)
+        logger.warning("Forbidden: %s %s - %s", request.method, request.path, error.message)
         return jsonify(error.to_dict()), 403
 
     @app.errorhandler(NotFoundException)
     def handle_not_found(error):
-        logger.warning("Not found: %s %s - %s", request.method, request.url, error.message)
+        logger.warning("Not found: %s %s - %s", request.method, request.path, error.message)
         return jsonify(error.to_dict()), 404
 
     @app.errorhandler(ConflictException)
     def handle_conflict(error):
-        logger.warning("Conflict: %s %s - %s", request.method, request.url, error.message)
+        logger.warning("Conflict: %s %s - %s", request.method, request.path, error.message)
         return jsonify(error.to_dict()), 409
 
     @app.errorhandler(ValidationException)
     def handle_validation(error):
-        logger.warning("Validation error: %s %s - %s", request.method, request.url, error.message)
+        logger.warning("Validation error: %s %s - %s", request.method, request.path, error.message)
         return jsonify(error.to_dict()), 422
 
     @app.errorhandler(DatabaseException)
     def handle_database(error):
-        logger.error("Database error: %s %s - %s", request.method, request.url, error.message, exc_info=True)
+        logger.error("Database error: %s %s - %s", request.method, request.path, error.message, exc_info=True)
         return jsonify(error.to_dict()), 500
 
     @app.errorhandler(mysql.connector.Error)
     def handle_mysql_error(error):
-        logger.error("MySQL error: %s %s - %s", request.method, request.url, str(error), exc_info=True)
+        logger.error("MySQL error: %s %s - %s", request.method, request.path, str(error), exc_info=True)
         return jsonify({
             "success": False,
             "message": "A database error occurred",
@@ -69,12 +69,12 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(ServiceUnavailableException)
     def handle_service_unavailable(error):
-        logger.error("Service unavailable: %s %s - %s", request.method, request.url, error.message)
+        logger.error("Service unavailable: %s %s - %s", request.method, request.path, error.message)
         return jsonify(error.to_dict()), 503
 
     @app.errorhandler(ValueError)
     def handle_value_error(error):
-        logger.warning("Value error: %s %s - %s", request.method, request.url, str(error))
+        logger.warning("Value error: %s %s - %s", request.method, request.path, str(error))
         return jsonify({
             "success": False,
             "message": str(error),
@@ -84,7 +84,7 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(KeyError)
     def handle_key_error(error):
-        logger.warning("Key error: %s %s - Missing key: %s", request.method, request.url, str(error))
+        logger.warning("Key error: %s %s - Missing key: %s", request.method, request.path, str(error))
         return jsonify({
             "success": False,
             "message": f"Missing required field: {str(error)}",
@@ -94,7 +94,7 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(PermissionError)
     def handle_permission_error(error):
-        logger.warning("Permission error: %s %s - %s", request.method, request.url, str(error))
+        logger.warning("Permission error: %s %s - %s", request.method, request.path, str(error))
         return jsonify({
             "success": False,
             "message": "Permission denied",
@@ -176,7 +176,7 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(500)
     def handle_500(error):
-        logger.error("Internal server error: %s %s - %s", request.method, request.url, str(error), exc_info=True)
+        logger.error("Internal server error: %s %s - %s", request.method, request.path, str(error), exc_info=True)
         return jsonify({
             "success": False,
             "message": "Internal server error",
@@ -204,7 +204,7 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(Exception)
     def handle_unexpected_exception(error):
-        logger.error("Unexpected error: %s %s - %s", request.method, request.url, str(error), exc_info=True)
+        logger.error("Unexpected error: %s %s - %s", request.method, request.path, str(error), exc_info=True)
         return jsonify({
             "success": False,
             "message": "An unexpected error occurred",

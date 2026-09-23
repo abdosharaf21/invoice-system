@@ -1,6 +1,6 @@
 """Reconciliation repository for database operations on runs, results and errors."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Iterator, List, Optional
 
 import mysql.connector
@@ -13,6 +13,21 @@ from backend.modules.reconciliation.model import (
 )
 from backend.shared.database import db_cursor
 
+
+def _iso(value) -> str:
+    """Serialize datetime/date values as ISO-8601 strings.
+
+    Timestamps surfaced by report API endpoints keep the same
+    ISO-8601 representation the platform's models use (``isoformat()``)
+    instead of Flask's JSON provider default (HTTP-date format), so date
+    handling is consistent across the whole API.
+    """
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
+
 # Columns for the enriched results report (paginated API + exports). The
 # select is shared so filtering, ordering and serialization are identical
 # everywhere the report is surfaced.
@@ -20,7 +35,7 @@ _RESULTS_REPORT_COLUMNS = """
     r.id, r.run_id, r.account_invoice_id, r.tax_invoice_id,
     r.match_status, r.discrepancy_amount, r.notes, r.created_at,
     i.invoice_number, i.uuid, i.invoice_date, i.currency,
-    i.counterparty_name, i.counterparty_tax_id,
+    i.counterparty_name, i.counterparty_tax_id, i.counterparty_email,
     i.subtotal_amount, i.vat_amount, i.total_amount,
     t.uuid, t.internal_id, t.issue_datetime, t.currency,
     t.total_sales, t.net_amount, t.vat_amount, t.total_amount
@@ -163,6 +178,97 @@ class ReconciliationRepository:
                 row = cursor.fetchone()
                 return self._row_to_run(row) if row else None
             except mysql.connector.Error:
+                raise
+
+    def find_active_run(self, company_id: int, period: str) -> Optional[ReconciliationRun]:
+        """Return an in-flight run for a company and period, if any.
+
+        A run is considered active when its status is ``pending`` or
+        ``running``.  Used by the service layer to return an existing run
+        on a duplicate start request instead of creating a second run for
+        the same period.
+        """
+        sql = """
+            SELECT * FROM reconciliation_runs
+            WHERE company_id = %s AND period = %s
+              AND status IN ('pending', 'running')
+            LIMIT 1
+        """
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(sql, (company_id, period))
+                row = cursor.fetchone()
+                return self._row_to_run(row) if row else None
+            except mysql.connector.Error:
+                raise
+
+    def create_run_exclusive(
+        self, company_id: int, period: str
+    ) -> tuple:
+        """Atomically create a pending run, or return the existing in-flight one.
+
+        Serializes run creation per company by locking the company's parent row
+        (``SELECT ... FOR UPDATE``). Two simultaneous start requests for the
+        same ``(company_id, period)`` therefore cannot both insert a run: the
+        first to acquire the lock inserts, the second blocks on the lock and
+        then finds the in-flight run on the post-lock re-check.
+
+        Returns:
+            ``(run, is_new)`` where ``is_new`` is ``True`` when a new pending
+            run was created and ``False`` when an existing in-flight run
+            (``pending``/``running``) was returned instead.
+        """
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(
+                    "SELECT id FROM companies WHERE id = %s FOR UPDATE",
+                    (company_id,),
+                )
+                if cursor.fetchone() is None:
+                    raise ValueError(f"Company '{company_id}' not found")
+                cursor.execute(
+                    """
+                    SELECT * FROM reconciliation_runs
+                    WHERE company_id = %s AND period = %s
+                      AND status IN ('pending', 'running')
+                    ORDER BY id LIMIT 1
+                    """,
+                    (company_id, period),
+                )
+                row = cursor.fetchone()
+                if row is not None:
+                    conn.commit()
+                    return self._row_to_run(row), False
+
+                run = ReconciliationRun(
+                    company_id=company_id,
+                    period=period,
+                    status="pending",
+                )
+                query = """
+                    INSERT INTO reconciliation_runs
+                        (company_id, period, status, invoice_count,
+                         tax_invoice_count, matched_count, unmatched_count,
+                         error_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(query, (
+                    run.company_id,
+                    run.period,
+                    run.status,
+                    run.invoice_count,
+                    run.tax_invoice_count,
+                    run.matched_count,
+                    run.unmatched_count,
+                    run.error_count
+                ))
+                run.id = cursor.lastrowid
+                conn.commit()
+                run.created_at = datetime.now()
+                run.updated_at = datetime.now()
+                return run, True
+            except mysql.connector.Error:
+                conn.rollback()
                 raise
 
     def list_runs_by_company(
@@ -329,21 +435,40 @@ class ReconciliationRepository:
         """
         with self._database.connection() as conn, db_cursor(conn) as cursor:
             try:
+                # Serialize concurrent finish attempts on the same run BEFORE
+                # inserting any result/error rows. Without this lock two
+                # transactions inserting FK child rows both hold an S-lock on
+                # the run row (foreign-key check) and then both try to upgrade
+                # to the X-lock needed by the status UPDATE, which InnoDB
+                # resolves by deadlock (error 1213) and rolling one back.
+                # Taking the run row lock first gives one transaction the whole
+                # run, so the loser cleanly observes the already-completed
+                # status and returns False without a deadlock error.
+                cursor.execute(
+                    "SELECT id FROM reconciliation_runs WHERE id = %s FOR UPDATE",
+                    (run_id,),
+                )
+                cursor.fetchone()
+
                 insert_result = """
                     INSERT INTO reconciliation_results
                         (run_id, account_invoice_id, tax_invoice_id,
                          match_status, discrepancy_amount, notes)
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """
-                for result in results:
-                    cursor.execute(insert_result, (
+                result_rows = [
+                    (
                         run_id,
                         result.account_invoice_id,
                         result.tax_invoice_id,
                         result.match_status,
                         result.discrepancy_amount,
-                        result.notes
-                    ))
+                        result.notes,
+                    )
+                    for result in results
+                ]
+                if result_rows:
+                    cursor.executemany(insert_result, result_rows)
 
                 insert_error = """
                     INSERT INTO reconciliation_errors
@@ -352,8 +477,8 @@ class ReconciliationRepository:
                          error_type, message)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
-                for error in errors:
-                    cursor.execute(insert_error, (
+                error_rows = [
+                    (
                         run_id,
                         error.source_type,
                         error.entity_id,
@@ -362,8 +487,12 @@ class ReconciliationRepository:
                         error.tax_authority_value,
                         error.difference,
                         error.error_type,
-                        error.message
-                    ))
+                        error.message,
+                    )
+                    for error in errors
+                ]
+                if error_rows:
+                    cursor.executemany(insert_error, error_rows)
 
                 update_query = """
                     UPDATE reconciliation_runs
@@ -378,8 +507,11 @@ class ReconciliationRepository:
                     invoice_count, tax_invoice_count,
                     matched_count, unmatched_count, error_count, run_id
                 ))
+                if cursor.rowcount == 0:
+                    conn.rollback()
+                    return False
                 conn.commit()
-                return cursor.rowcount > 0
+                return True
             except mysql.connector.Error:
                 conn.rollback()
                 raise
@@ -440,6 +572,54 @@ class ReconciliationRepository:
             except mysql.connector.Error:
                 raise
 
+    def list_affected_results_with_party(self, run_id: int) -> List[dict]:
+        """Affected results of a run with their counterparty contact data.
+
+        Affected results are invoice-level outcomes a taxpayer should be
+        told about (mismatched, missing from the tax authority records or
+        invalid). Each row carries the accounting invoice's counterparty
+        contact information, so the email service can group deliveries by
+        recipient in a single pass. The run-level company scoping is applied
+        by the caller.
+        """
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(
+                    """
+                    SELECT r.id, r.run_id, r.match_status, r.discrepancy_amount,
+                           r.notes,
+                           i.id, i.invoice_number, i.invoice_date, i.total_amount,
+                           i.counterparty_name, i.counterparty_tax_id,
+                           i.counterparty_email
+                    FROM reconciliation_results r
+                    JOIN invoices i ON i.id = r.account_invoice_id
+                    WHERE r.run_id = %s
+                      AND r.match_status IN (
+                          'mismatched', 'missing_in_tax_authority', 'invalid')
+                    ORDER BY r.id
+                    """,
+                    (run_id,)
+                )
+                return [
+                    {
+                        "result_id": row[0],
+                        "run_id": row[1],
+                        "match_status": row[2],
+                        "discrepancy_amount": row[3],
+                        "notes": row[4],
+                        "invoice_id": row[5],
+                        "invoice_number": row[6],
+                        "invoice_date": _iso(row[7]),
+                        "total_amount": row[8],
+                        "counterparty_name": row[9],
+                        "counterparty_tax_id": row[10],
+                        "counterparty_email": row[11],
+                    }
+                    for row in cursor.fetchall()
+                ]
+            except mysql.connector.Error:
+                raise
+
     def _row_to_result_report(self, row: tuple) -> dict:
         return {
             "id": row[0],
@@ -449,24 +629,25 @@ class ReconciliationRepository:
             "match_status": row[4],
             "discrepancy_amount": row[5],
             "notes": row[6],
-            "created_at": row[7],
+            "created_at": _iso(row[7]),
             "account_invoice_number": row[8],      # invoices.invoice_number
             "account_uuid": row[9],                # invoices.uuid
-            "account_invoice_date": row[10],       # invoices.invoice_date
+            "account_invoice_date": _iso(row[10]),  # invoices.invoice_date
             "account_currency": row[11],           # invoices.currency
             "counterparty_name": row[12],
             "counterparty_tax_id": row[13],
-            "accounting_subtotal": row[14],
-            "accounting_vat": row[15],
-            "accounting_total": row[16],
-            "tax_uuid": row[17],                   # tax_invoices.uuid
-            "tax_internal_id": row[18],            # tax_invoices.internal_id
-            "tax_issue_datetime": row[19],         # tax_invoices.issue_datetime
-            "tax_currency": row[20],               # tax_invoices.currency
-            "tax_total_sales": row[21],
-            "tax_net_amount": row[22],
-            "tax_vat_amount": row[23],
-            "tax_total_amount": row[24],
+            "counterparty_email": row[14],
+            "accounting_subtotal": row[15],
+            "accounting_vat": row[16],
+            "accounting_total": row[17],
+            "tax_uuid": row[18],                   # tax_invoices.uuid
+            "tax_internal_id": row[19],            # tax_invoices.internal_id
+            "tax_issue_datetime": _iso(row[20]),   # tax_invoices.issue_datetime
+            "tax_currency": row[21],               # tax_invoices.currency
+            "tax_total_sales": row[22],
+            "tax_net_amount": row[23],
+            "tax_vat_amount": row[24],
+            "tax_total_amount": row[25],
         }
 
     def _row_to_error_report(self, row: tuple) -> dict:
@@ -481,7 +662,7 @@ class ReconciliationRepository:
             "difference": row[7],
             "error_type": row[8],
             "message": row[9],
-            "created_at": row[10],
+            "created_at": _iso(row[10]),
         }
 
     def count_results(self, run_id: int, filters: Optional[dict] = None) -> int:
@@ -552,14 +733,15 @@ class ReconciliationRepository:
             LEFT JOIN invoices i ON i.id = r.account_invoice_id
             LEFT JOIN tax_invoices t ON t.id = r.tax_invoice_id
             WHERE {clause}
+              AND r.id > %s
             ORDER BY r.id
-            LIMIT %s OFFSET %s
+            LIMIT %s
         """.format(columns=_RESULTS_REPORT_COLUMNS, clause=clause)
-        offset = 0
+        cursor_id = 0
         while True:
             with self._database.connection() as conn, db_cursor(conn) as cursor:
                 try:
-                    cursor.execute(query, params + [batch_size, offset])
+                    cursor.execute(query, params + [cursor_id, batch_size])
                     rows = cursor.fetchall()
                 except mysql.connector.Error:
                     raise
@@ -567,9 +749,9 @@ class ReconciliationRepository:
                 break
             for row in rows:
                 yield self._row_to_result_report(row)
+            cursor_id = rows[-1][0]
             if len(rows) < batch_size:
                 break
-            offset += batch_size
 
     def count_errors(self, run_id: int, filters: Optional[dict] = None) -> int:
         """Total error rows for a run matching the given filters."""
@@ -629,14 +811,15 @@ class ReconciliationRepository:
             SELECT *
             FROM reconciliation_errors e
             WHERE {clause}
+              AND e.id > %s
             ORDER BY e.id
-            LIMIT %s OFFSET %s
+            LIMIT %s
         """.format(clause=clause)
-        offset = 0
+        cursor_id = 0
         while True:
             with self._database.connection() as conn, db_cursor(conn) as cursor:
                 try:
-                    cursor.execute(query, params + [batch_size, offset])
+                    cursor.execute(query, params + [cursor_id, batch_size])
                     rows = cursor.fetchall()
                 except mysql.connector.Error:
                     raise
@@ -644,9 +827,40 @@ class ReconciliationRepository:
                 break
             for row in rows:
                 yield self._row_to_error_report(row)
+            cursor_id = rows[-1][0]
             if len(rows) < batch_size:
                 break
-            offset += batch_size
+
+    def recover_interrupted_runs(self) -> int:
+        """Mark runs left in a temporary state as failed (restart recovery).
+
+        Runs that are ``pending`` (created but never started) or ``running``
+        (started but never finished) can only be leftovers of a crash. A run's
+        results and ``completed`` status are persisted atomically in
+        ``finish_run_transaction``, so no results exist for a run still in a
+        temporary state and it is safe to surface it as ``failed``. Only runs
+        that never started, or that started more than 60 minutes ago, are
+        considered interrupted so a brief concurrent startup while another
+        worker is mid-run is never mis-flagged.
+
+        Returns:
+            The number of runs transitioned to ``failed``.
+        """
+        sql = """
+            UPDATE reconciliation_runs
+            SET status = 'failed', finished_at = NOW(), updated_at = NOW()
+            WHERE status IN ('pending', 'running')
+              AND (started_at IS NULL OR started_at < NOW() - INTERVAL 60 MINUTE)
+        """
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(sql)
+                affected = cursor.rowcount
+                conn.commit()
+                return affected
+            except mysql.connector.Error:
+                conn.rollback()
+                raise
 
     def add_error(self, error: ReconciliationError) -> ReconciliationError:
         with self._database.connection() as conn, db_cursor(conn) as cursor:

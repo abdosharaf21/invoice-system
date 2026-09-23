@@ -5,14 +5,37 @@
  * DECIMAL columns. Formatting here is display-only: the frontend never
  * performs arithmetic on financial values — the backend remains the source
  * of truth for totals, differences and reconciliation outcomes.
+ *
+ * Human labels (statuses, roles, error codes) are resolved through the i18n
+ * dictionary for the active locale; en remains the default so the app works
+ * before any locale is loaded.
  */
 
-const moneyFmt = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+import { t, getLocale } from "../i18n/index.js";
 
-const numFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
+const moneyFmts = new Map();
+const numFmts = new Map();
+
+function loc() {
+  return getLocale() || "en";
+}
+
+function moneyFmt(locale) {
+  if (!moneyFmts.has(locale)) {
+    moneyFmts.set(locale, new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }));
+  }
+  return moneyFmts.get(locale);
+}
+
+function numFmt(locale) {
+  if (!numFmts.has(locale)) {
+    numFmts.set(locale, new Intl.NumberFormat(locale, { maximumFractionDigits: 4 }));
+  }
+  return numFmts.get(locale);
+}
 
 /**
  * Format a monetary value. Accepts numbers and numeric strings.
@@ -22,7 +45,7 @@ export function formatMoney(value) {
   if (value === null || value === undefined || value === "") return "—";
   const n = Number(value);
   if (Number.isNaN(n)) return String(value);
-  return moneyFmt.format(n);
+  return moneyFmt(loc()).format(n);
 }
 
 /** Format a generic number without forcing decimals. */
@@ -30,14 +53,23 @@ export function formatNumber(value) {
   if (value === null || value === undefined || value === "") return "—";
   const n = Number(value);
   if (Number.isNaN(n)) return String(value);
-  return numFmt.format(n);
+  return numFmt(loc()).format(n);
 }
 
 function renderDate(y, m, d) {
   const dt = new Date(y, m - 1, d);
   if (Number.isNaN(dt.getTime())) return null;
-  return dt.toLocaleDateString("en-GB", {
-    day: "2-digit",
+  // en keeps the original "DD Mon YYYY" order so existing behaviour/tests are
+  // preserved; other locales fall back to Intl (e.g. Arabic for `ar`).
+  if (loc() === "en") {
+    return dt.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+  return dt.toLocaleDateString(loc(), {
+    day: "numeric",
     month: "short",
     year: "numeric",
   });
@@ -75,14 +107,26 @@ export function formatDateTime(value) {
   if (!value) return "—";
   const parsed = new Date(String(value));
   if (Number.isNaN(parsed.getTime())) return String(value);
+
+  if (loc() === "en") {
+    return (
+      parsed.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }) +
+      ", " +
+      parsed.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    );
+  }
   return (
-    parsed.toLocaleDateString("en-GB", {
-      day: "2-digit",
+    parsed.toLocaleDateString(loc(), {
+      day: "numeric",
       month: "short",
       year: "numeric",
     }) +
     ", " +
-    parsed.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    parsed.toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" })
   );
 }
 
@@ -91,97 +135,102 @@ export function normalizePeriod(raw) {
   return String(raw || "").trim();
 }
 
+/** Shared, allow-listed business statuses (reconciliation, runs, batches,
+ * email deliveries, users). Single source of truth for class tokens/labels. */
+const STATUS_LABELS = {
+  matched: true,
+  mismatched: true,
+  missing_in_tax_authority: true,
+  extra_in_tax_authority: true,
+  invalid: true,
+  pending: true,
+  running: true,
+  completed: true,
+  failed: true,
+  uploaded: true,
+  processing: true,
+  sent: true,
+  skipped: true,
+  no_email: true,
+  active: true,
+  inactive: true,
+};
+
+/**
+ * Return a safe CSS class token for a business status. null / undefined /
+ * empty / unknown values fall back to `fallback` (default "neutral") so a
+ * backend value can never be interpolated raw into a class name.
+ */
+export function statusClassToken(status, fallback = "neutral") {
+  if (status === null || status === undefined) return fallback;
+  const s = String(status).trim();
+  if (s === "" || !Object.prototype.hasOwnProperty.call(STATUS_LABELS, s)) return fallback;
+  return s;
+}
+
+/**
+ * Human label for a status. Missing values produce "Unknown"; unknown values
+ * are returned verbatim (they are still rendered as safe text, never markup).
+ */
+export function statusLabel(status) {
+  if (status === null || status === undefined) return t("common.unknown");
+  const s = String(status).trim();
+  if (s === "") return t("common.unknown");
+  const key = `status.${s}`;
+  const out = t(key);
+  return out === key ? s : out;
+}
+
 /** Human label for a reconciliation match status. */
 export function matchStatusLabel(status) {
-  const labels = {
-    matched: "Matched",
-    mismatched: "Mismatched",
-    missing_in_tax_authority: "Missing in Tax Authority",
-    extra_in_tax_authority: "Extra in Tax Authority",
-    invalid: "Invalid",
-  };
-  return labels[status] || status;
+  return statusLabel(status);
 }
 
 /** Human label for a run status. */
 export function runStatusLabel(status) {
-  const labels = {
-    pending: "Pending",
-    running: "Running",
-    completed: "Completed",
-    failed: "Failed",
-  };
-  return labels[status] || status;
+  return statusLabel(status);
 }
 
 /** Human label for a batch status. */
 export function batchStatusLabel(status) {
-  const labels = {
-    uploaded: "Uploaded",
-    processing: "Processing",
-    completed: "Completed",
-    failed: "Failed",
-  };
-  return labels[status] || status;
+  return statusLabel(status);
 }
 
 /** Human label for an import error code. */
 export function importErrorLabel(code) {
-  const labels = {
-    MISSING_FIELD: "Missing required field",
-    INVALID_UUID: "Invalid UUID",
-    INVALID_DATE: "Invalid date",
-    INVALID_MONEY: "Invalid monetary value",
-    INVALID_QUANTITY: "Invalid quantity",
-    INVALID_ENUM: "Invalid value",
-    MISSING_HEADER: "Missing column header",
-    DUPLICATE_HEADER: "Duplicate column header",
-    UNKNOWN_HEADER: "Unrecognised column header",
-    INCONSISTENT_GROUP: "Conflicting values within invoice group",
-    DUPLICATE_IN_FILE: "Duplicate invoice in file",
-    DUPLICATE_IN_DB: "Invoice already exists",
-    FILE_ERROR: "File error",
-  };
-  return labels[code] || code;
+  const key = `error.import.${code}`;
+  const out = t(key);
+  return out === key ? code : out;
 }
 
 /** Human label for a reconciliation error type code. */
 export function errorTypeLabel(code) {
-  const labels = {
-    INVALID_UUID: "Invalid UUID",
-    INVALID_DATE: "Invalid date",
-    INVALID_FINANCIAL_VALUE: "Invalid financial value",
-    INVOICE_DATE_MISMATCH: "Invoice date differs",
-    CURRENCY_MISMATCH: "Currency differs",
-    COUNTERPARTY_TAX_ID_MISMATCH: "Counterparty tax ID differs",
-    COUNTERPARTY_NAME_MISMATCH: "Counterparty name differs",
-    SUBTOTAL_AMOUNT_MISMATCH: "Subtotal amount differs",
-    DISCOUNT_AMOUNT_MISMATCH: "Discount amount differs",
-    NET_AMOUNT_MISMATCH: "Net amount differs",
-    VAT_AMOUNT_MISMATCH: "VAT amount differs",
-    TOTAL_AMOUNT_MISMATCH: "Total amount differs",
-    ITEM_COUNT_MISMATCH: "Item count differs",
-    ITEM_QUANTITY_SUM_MISMATCH: "Item quantity sum differs",
-    ITEM_VAT_SUM_MISMATCH: "Item VAT sum differs",
-    ITEM_TOTAL_SUM_MISMATCH: "Item line-total sum differs",
-  };
-  return labels[code] || code;
+  const key = `error.recon.${code}`;
+  const out = t(key);
+  return out === key ? code : out;
 }
 
 /** Human label for a role. */
 export function roleLabel(role) {
-  const labels = {
-    admin: "Admin",
-    accountant: "Accountant",
-    manager: "Manager",
-    viewer: "Viewer",
+  const key = `role.${role}`;
+  const out = t(key);
+  return out === key ? role : out;
+}
+
+/** Safe CSS class token for a role badge; unknown roles fall back to "viewer". */
+export function roleClassToken(role) {
+  const tokens = {
+    admin: "role-admin",
+    accountant: "role-accountant",
+    manager: "role-manager",
+    viewer: "role-viewer",
   };
-  return labels[role] || role;
+  return tokens[role] === undefined ? "role-viewer" : tokens[role];
 }
 
 /** Human label for an error source type. */
 export function sourceTypeLabel(sourceType) {
-  if (sourceType === "account") return "Accounting";
-  if (sourceType === "tax") return "Tax Authority";
+  if (sourceType === "account") return t("report.sourceAccounting");
+  if (sourceType === "tax") return t("report.sourceTax");
   return sourceType || "—";
 }

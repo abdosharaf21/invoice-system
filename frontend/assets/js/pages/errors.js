@@ -3,15 +3,16 @@
  */
 
 import { el, clear } from "../utils/dom.js";
+import { t } from "../i18n/index.js";
 
 export function renderNotFound(container) {
   clear(container);
   container.appendChild(
     el("div", { className: "state-block state-block--page" },
       el("div", { className: "state-block__icon" }, "404"),
-      el("div", { className: "state-block__title" }, "Page not found"),
-      el("div", null, "The address you requested does not exist."),
-      el("button", { className: "btn btn-primary", onClick: () => { window.location.hash = "#/dashboard"; } }, "Go to dashboard"),
+      el("div", { className: "state-block__title" }, t("errors.notFound")),
+      el("div", null, t("errors.notFoundBody")),
+      el("button", { className: "btn btn-primary", onClick: () => { window.location.hash = "#/dashboard"; } }, t("errors.goDashboard")),
     ),
   );
 }
@@ -21,9 +22,9 @@ export function renderForbidden(container) {
   container.appendChild(
     el("div", { className: "state-block state-block--page" },
       el("div", { className: "state-block__icon" }, "403"),
-      el("div", { className: "state-block__title" }, "Access denied"),
-      el("div", null, "Your role does not allow this action."),
-      el("button", { className: "btn btn-primary", onClick: () => { window.location.hash = "#/dashboard"; } }, "Go to dashboard"),
+      el("div", { className: "state-block__title" }, t("errors.forbidden")),
+      el("div", null, t("errors.forbiddenBody")),
+      el("button", { className: "btn btn-primary", onClick: () => { window.location.hash = "#/dashboard"; } }, t("errors.goDashboard")),
     ),
   );
 }

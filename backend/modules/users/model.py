@@ -36,7 +36,14 @@ class User:
         roles: Optional[List[str]] = None,
         last_login_at: Optional[datetime] = None,
         created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None
+        updated_at: Optional[datetime] = None,
+        language: str = "en",
+        theme: str = "light",
+        date_format: str = "YYYY-MM-DD",
+        number_format: str = "#,##0.00",
+        timezone: str = "UTC",
+        avatar_path: Optional[str] = None,
+        pagination_size: int = 25,
     ) -> None:
         self.id = id
         self.company_id = company_id
@@ -50,6 +57,13 @@ class User:
         self.last_login_at = last_login_at
         self.created_at = created_at or datetime.now()
         self.updated_at = updated_at or datetime.now()
+        self.language = language
+        self.theme = theme
+        self.date_format = date_format
+        self.number_format = number_format
+        self.timezone = timezone
+        self.avatar_path = avatar_path
+        self.pagination_size = pagination_size
 
     @property
     def full_name(self) -> str:
@@ -80,7 +94,14 @@ class User:
             "status": self.status,
             "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "language": self.language,
+            "theme": self.theme,
+            "date_format": self.date_format,
+            "number_format": self.number_format,
+            "timezone": self.timezone,
+            "avatar_path": self.avatar_path,
+            "pagination_size": self.pagination_size,
         }
 
     @classmethod

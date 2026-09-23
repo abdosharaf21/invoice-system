@@ -1,0 +1,7 @@
+uuid,invoice_number,invoice_date,due_date,currency,counterparty_name,counterparty_tax_id,counterparty_email,item_description,quantity,unit_price,vat_rate
+11111111-0000-4000-8000-000000000001,INV-A001,2026-08-05,2026-09-04,EGP,Acme Trading Co,3000123456,billing@acme.test,Consulting services,10,100.00,14
+11111111-0000-4000-8000-000000000002,INV-A002,2026-08-12,2026-09-11,EGP,Beta Retail Ltd,3000789012,ap@betaretail.test,Retail goods,5,100.00,14
+11111111-0000-4000-8000-000000000003,INV-A003,2026-08-20,2026-09-19,EGP,Gamma Services,3000654321,,Field work,2,50.00,14
+11111111-0000-4000-8000-000000000004,INV-A004,2026-08-08,2026-09-07,EGP,Delta Logistics,3000777888,finance@delta.test,Line item one,3,200.00,14
+11111111-0000-4000-8000-000000000004,INV-A004,2026-08-08,2026-09-07,EGP,Delta Logistics,3000777888,finance@delta.test,Line item two,4,50.00,14
+,INV-A005,2026-08-25,2026-09-24,EGP,Epsilon Supplies,3000999000,vendor@epsilon.test,Spare parts,1,250.00,14

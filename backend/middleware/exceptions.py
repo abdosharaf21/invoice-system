@@ -45,6 +45,19 @@ class UnauthorizedException(AppException):
         super().__init__(message, 401, "UNAUTHORIZED")
 
 
+class InvalidCredentialsException(UnauthorizedException):
+    """Exception for invalid authentication credentials (401).
+
+    Distinct from generic ``UNAUTHORIZED`` so clients can programmatically
+    distinguish "bad username/password" from "missing or revoked token"
+    without scraping the message text.
+    """
+
+    def __init__(self, message: str = "Invalid email or password") -> None:
+        super().__init__(message)
+        self.code = "INVALID_CREDENTIALS"
+
+
 class ForbiddenException(AppException):
     """Exception for forbidden errors (403)."""
 

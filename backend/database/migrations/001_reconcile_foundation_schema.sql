@@ -1,4 +1,5 @@
 -- Migration 001: Reconcile the foundation schema.
+-- verify: refresh_token_blocklist
 --
 -- Reconciles the Phase 1 foundation schema with the code that relies on it.
 --

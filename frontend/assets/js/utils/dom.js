@@ -10,6 +10,8 @@
  */
 
 import { escapeHtml } from "./escape.js";
+import { statusClassToken } from "./format.js";
+import { t } from "../i18n/index.js";
 
 /**
  * Create an element with attributes and children.
@@ -118,6 +120,10 @@ export const icons = {
     el("path", { d: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" }),
     el("circle", { cx: "12", cy: "7", r: "4" }),
   ),
+  settings: el("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2 },
+    el("path", { d: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" }),
+    el("circle", { cx: "12", cy: "12", r: "3" }),
+  ),
   search: el("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2 },
     el("circle", { cx: "11", cy: "11", r: "8" }),
     el("line", { x1: "21", y1: "21", x2: "16.65", y2: "16.65" }),
@@ -135,6 +141,23 @@ export const icons = {
     el("line", { x1: "3", y1: "12", x2: "21", y2: "12" }),
     el("line", { x1: "3", y1: "6", x2: "21", y2: "6" }),
     el("line", { x1: "3", y1: "18", x2: "21", y2: "18" }),
+  ),
+  checkCircle: el("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2 },
+    el("path", { d: "M22 11.08V12a10 10 0 1 1-5.93-9.14" }),
+    el("polyline", { points: "22 4 12 14.01 9 11.01" }),
+  ),
+  alertTriangle: el("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2 },
+    el("path", { d: "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" }),
+    el("line", { x1: "12", y1: "9", x2: "12", y2: "13" }),
+    el("line", { x1: "12", y1: "17", x2: "12.01", y2: "17" }),
+  ),
+  xCircle: el("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2 },
+    el("circle", { cx: "12", cy: "12", r: "10" }),
+    el("line", { x1: "15", y1: "9", x2: "9", y2: "15" }),
+    el("line", { x1: "9", y1: "9", x2: "15", y2: "15" }),
+  ),
+  shield: el("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2 },
+    el("path", { d: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" }),
   ),
 };
 
@@ -171,7 +194,7 @@ export function skeletonRows(cols = 5, rows = 5) {
 
 /** Central render helpers. */
 export function renderBadge(status) {
-  const cls = `badge badge--${status || "neutral"}`;
+  const cls = `badge badge--${statusClassToken(status)}`;
   return el("span", { className: cls }, (status || "—").replace(/_/g, " "));
 }
 
@@ -184,11 +207,11 @@ export function sectionHeading(text) {
  * Central show/hide helpers for loading/empty/error states inside a container.
  * Each returns a function that can remove the state later.
  */
-export function showLoading(container, message = "Loading…") {
+export function showLoading(container, message = t("common.loading")) {
   clear(container);
   container.appendChild(
     el("div", { className: "state-block" },
-      el("div", { className: "spinner", role: "status", "aria-label": "Loading" }),
+      el("div", { className: "spinner", role: "status", "aria-label": t("common.loadingAria") }),
       el("div", null, message),
     ),
   );
@@ -197,11 +220,11 @@ export function showLoading(container, message = "Loading…") {
 export function showError(container, message, { onRetry = null } = {}) {
   clear(container);
   container.appendChild(
-    el("div", { className: "state-block" },
+    el("div", { className: "state-block", role: "alert" },
       el("div", { className: "state-block__icon" }, "⚠"),
-      el("div", { className: "state-block__title" }, "Unable to load data"),
+      el("div", { className: "state-block__title" }, t("common.unableLoad")),
       el("div", null, message),
-      onRetry ? el("button", { className: "btn btn-secondary", onClick: onRetry }, "Retry") : null,
+      onRetry ? el("button", { className: "btn btn-secondary", onClick: onRetry }, t("common.retry")) : null,
     ),
   );
 }
@@ -211,7 +234,7 @@ export function showEmpty(container, message, { action = null, onAction = null }
   container.appendChild(
     el("div", { className: "state-block" },
       el("div", { className: "state-block__icon" }, "📋"),
-      el("div", { className: "state-block__title" }, message || "Nothing here"),
+      el("div", { className: "state-block__title" }, message || t("common.nothingHere")),
       action ? el("button", { className: "btn btn-primary", onClick: onAction }, action) : null,
     ),
   );

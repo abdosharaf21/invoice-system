@@ -32,11 +32,25 @@ class FakeReconRepo:
         self.finished = {}
         self.failed = 0
         self.started = []
+        self.active_run = None
 
     def create_run(self, run):
         run.id = 100 + len(self.created)
         self.created.append(run)
         return run
+
+    def create_run_exclusive(self, company_id, period):
+        if self.active_run is not None:
+            return self.active_run, False
+        run = ReconciliationRun(
+            company_id=company_id, period=period, status=c.RUN_PENDING
+        )
+        run.id = 100 + len(self.created)
+        self.created.append(run)
+        return run, True
+
+    def find_active_run(self, company_id, period):
+        return self.active_run
 
     def start_run(self, run_id):
         self.started.append(run_id)
@@ -130,9 +144,10 @@ def test_start_run_persists_counts_and_completes():
     tax = [_tax(_uuid("matched"), 10), _tax(_uuid("extra"), 11)]
     service = _service(recon, FakeInvoiceRepo(invoices), FakeTaxRepo(tax))
 
-    run, counts = service.start_run(1, "2024-03")
+    run, counts, is_new = service.start_run(1, "2024-03")
 
     assert run.status == c.RUN_COMPLETED
+    assert is_new is True
     assert counts[c.MATCHED] == 1
     assert counts[c.MISSING_IN_TAX_AUTHORITY] == 1
     assert counts[c.EXTRA_IN_TAX_AUTHORITY] == 1
@@ -192,9 +207,10 @@ def test_mismatches_generate_error_count_but_still_complete():
         recon, FakeInvoiceRepo([invoice]), FakeTaxRepo([tax])
     )
 
-    run, counts = service.start_run(1, "2024-03")
+    run, counts, is_new = service.start_run(1, "2024-03")
 
     assert run.status == c.RUN_COMPLETED
+    assert is_new is True
     assert counts[c.MISMATCHED] == 1
     finished = recon.finished[run.id]["counts"]
     assert finished["error_count"] >= 1
@@ -204,10 +220,43 @@ def test_mismatches_generate_error_count_but_still_complete():
 def test_start_run_normalizes_period_with_whitespace():
     recon = FakeReconRepo()
     service = _service(recon, FakeInvoiceRepo([]), FakeTaxRepo([]))
-    run, counts = service.start_run(1, " 2024-03 ")
+    run, counts, is_new = service.start_run(1, " 2024-03 ")
 
     assert run.period == "2024-03"
+    assert is_new is True
     assert recon.created[0].period == "2024-03"
+
+
+def test_start_run_returns_existing_active_run_on_duplicate_request():
+    recon = FakeReconRepo()
+    recon.active_run = ReconciliationRun(
+        id=50, company_id=1, period="2024-03", status=c.RUN_RUNNING
+    )
+    service = _service(recon, FakeInvoiceRepo([]), FakeTaxRepo([]))
+
+    run, counts, is_new = service.start_run(1, "2024-03")
+
+    assert is_new is False
+    assert run.id == 50
+    assert run.status == c.RUN_RUNNING
+    assert counts == {s: 0 for s in c.RESULT_STATUSES}
+    assert recon.created == []
+    assert recon.started == []
+
+
+def test_start_run_completed_run_does_not_block_new_run():
+    recon = FakeReconRepo()
+    recon.created.append(ReconciliationRun(
+        id=1, company_id=1, period="2024-03", status=c.RUN_COMPLETED
+    ))
+    service = _service(recon, FakeInvoiceRepo([]), FakeTaxRepo([]))
+
+    run, counts, is_new = service.start_run(1, "2024-03")
+
+    assert is_new is True
+    assert run.status == c.RUN_COMPLETED
+    assert len(recon.created) == 2
+    assert recon.started == [run.id]
 
 
 # ---------------------------------------------------------------------------
@@ -247,3 +296,15 @@ def test_get_results_and_errors_scope_to_company():
     assert service.get_results(1, company_id=9) is None
     assert service.get_errors(1, company_id=1) == []
     assert service.get_errors(1, company_id=9) is None
+
+
+def test_recover_interrupted_delegates_to_repository():
+    """Startup recovery must call the repository method exactly once."""
+    from unittest.mock import MagicMock
+
+    recon_repo = MagicMock()
+    recon_repo.recover_interrupted_runs.return_value = 3
+    service = _service(recon_repo, None, None)
+
+    assert service.recover_interrupted() == 3
+    recon_repo.recover_interrupted_runs.assert_called_once_with()

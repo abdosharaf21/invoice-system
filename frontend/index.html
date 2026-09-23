@@ -1,24 +1,92 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="light dark" />
   <title>E-Invoice &amp; Reconciliation System</title>
+  <script>
+    // No-flash locale bootstrap. Mirrors the i18n engine's persistence only —
+    // the engine (assets/js/i18n/index.js) is the single source of truth for
+    // the active language. Sets lang + dir before first paint so the RTL
+    // layout never flashes.
+    (function () {
+      var lang = "en";
+      try {
+        var stored = localStorage.getItem("eis:lang");
+        if (stored === "ar" || stored === "en") lang = stored;
+      } catch (e) {
+        lang = "en";
+      }
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+    })();
+  </script>
+  <script>
+    // No-flash theme bootstrap. Mirrors the Theme Engine's resolution only —
+    // the engine (assets/js/theme.js) remains the single source of truth.
+    // Preference: explicit user choice → last resolved cache → system → OS.
+    (function () {
+      var theme = "system";
+      try {
+        theme = localStorage.getItem("eis:theme");
+        if (theme !== "light" && theme !== "dark" && theme !== "system") {
+          theme = localStorage.getItem("eis:theme:resolved");
+        }
+        if (theme !== "light" && theme !== "dark" && theme !== "system") theme = "system";
+      } catch (e) {
+        theme = "system";
+      }
+      var dark = theme === "system"
+        ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)
+        : theme === "dark";
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
   <link rel="stylesheet" href="assets/css/reset.css" />
   <link rel="stylesheet" href="assets/css/variables.css" />
   <link rel="stylesheet" href="assets/css/base.css" />
   <link rel="stylesheet" href="assets/css/layout.css" />
   <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/settings.css" />
 </head>
 <body>
+  <!--
+    Skip link — the first focus target on every page. Tab to reveal it, Enter
+    to jump the reading cursor to the application main landmark. Kept above the
+    #app root so it is always the first interactive element. The href points at
+    a stable anchor that the hash router never owns (app-main is not a route).
+  -->
+  <a class="skip-link" href="#app-main" data-skip-link>
+    <span data-skip-link-label>Skip to content</span>
+  </a>
   <!-- Single SPA root. All views render into #app via the hash router. -->
   <div id="app">
     <div class="state-block" aria-live="polite">
-      <div class="spinner" role="status" aria-label="Loading"></div>
-      <div>Loading application…</div>
+      <div class="spinner" role="status" aria-label="Loading" id="app-loading-spinner"></div>
+      <div id="app-loading-text">Loading application…</div>
     </div>
   </div>
+  <script>
+    // No-flash locale bootstrap for the boot spinner (Req 14). Mirrors the
+    // head script: reads eis:lang and localizes the spinner's aria-label and
+    // loading caption before the app module paints.
+    (function () {
+      var lang = "en";
+      try {
+        var stored = localStorage.getItem("eis:lang");
+        if (stored === "ar" || stored === "en") lang = stored;
+      } catch (e) { /* default to en */ }
+      var spinner = document.getElementById("app-loading-spinner");
+      var text = document.getElementById("app-loading-text");
+      if (lang === "ar") {
+        if (spinner) spinner.setAttribute("aria-label", "جارٍ التحميل");
+        if (text) text.textContent = "جارٍ تحميل التطبيق…";
+      } else {
+        if (spinner) spinner.setAttribute("aria-label", "Loading");
+        if (text) text.textContent = "Loading application…";
+      }
+    })();
+  </script>
   <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
   <noscript>
     <div class="alert alert--error" style="margin: 1rem; max-width: 640px;">

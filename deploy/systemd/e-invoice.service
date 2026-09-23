@@ -1,0 +1,53 @@
+# E-Invoice & Reconciliation System — Gunicorn systemd unit
+#
+# Install:
+#   sudo install -m 0644 deploy/systemd/e-invoice.service /etc/systemd/system/e-invoice.service
+#   sudo mkdir -p /etc/e-invoice
+#   sudo install -m 0640 .env /etc/e-invoice/e-invoice.env     (owner: e-invoice)
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now e-invoice
+#
+# Paths below assume /opt/e-invoice as the deployment root. Adjust for your
+# layout. Gunicorn binds 127.0.0.1:8000 — Nginx proxies /api/ to it.
+
+[Unit]
+Description=E-Invoice & Reconciliation System (Gunicorn)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=notify
+User=e-invoice
+Group=e-invoice
+WorkingDirectory=/opt/e-invoice
+
+# Secrets and settings live outside the repo so they survive updates.
+EnvironmentFile=/etc/e-invoice/e-invoice.env
+
+# Access + error logs go to stdout/stderr for journalctl inspection.
+ExecStart=/opt/e-invoice/.venv/bin/gunicorn \
+    --workers 3 \
+    --threads 2 \
+    --bind 127.0.0.1:8000 \
+    --timeout 60 \
+    --graceful-timeout 30 \
+    --access-logfile - \
+    --error-logfile - \
+    backend.wsgi:application
+
+Restart=always
+RestartSec=3
+
+# --- Hardening -----------------------------------------------------------
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

@@ -7,6 +7,9 @@ Uses mock repositories so the full import pipeline (parse -> normalize
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+import mysql.connector
+import pytest
+
 from backend.modules.imports import errors as const
 from backend.modules.imports.service import ImportService
 
@@ -168,3 +171,104 @@ class TestImportService:
         user_repo.get_by_id.return_value = None
         service = ImportService(MagicMock(), MagicMock(), user_repo)
         assert service.company_for_user(5) is None
+
+
+class TestBatchCounterIntegrity:
+    """Verifies `total_rows` is persisted with `update_counts` (Phase 3).
+
+    The completed path used to drop `total_rows`, leaving batches stuck at
+    0 while processed/error counters were populated. Every terminal path
+    must hand the counter to the repository.
+    """
+
+    def test_completed_path_persists_total_rows(self):
+        harness = _Harness()
+        harness.import_csv(
+            "uuid,invoice_number,invoice_date,currency,counterparty_name,item_description,quantity,unit_price,vat_rate\n"
+            f"{UUID_1},INV-001,2024-01-15,EGP,Acme Corp,Widget,2,100.00,14\n"
+            f"{UUID_2},INV-002,2024-01-16,EGP,Globex Ltd,Gadget,5,20.00,0\n"
+        )
+        call = harness.batch_repo.update_counts.call_args
+        assert call.kwargs["total_rows"] == 2
+        assert call.kwargs["processed_rows"] == 2
+        assert call.kwargs["error_rows"] == 0
+
+    def test_completed_path_counter_invariant_holds(self):
+        harness = _Harness()
+        harness.import_csv(
+            "invoice_number,invoice_date,counterparty_name,item_description,unit_price\n"
+            "INV-A,2024-01-01,Acme,Widget,10.00\n"
+            "INV-B,2024-01-02,Acme,Widgetable,20.00\n"
+            "INV-C,2024-01-03,Acme,Gadget,30.00\n"
+        )
+        call = harness.batch_repo.update_counts.call_args
+        total = call.kwargs["total_rows"]
+        processed = call.kwargs["processed_rows"]
+        error = call.kwargs["error_rows"]
+        assert total >= 0 and processed >= 0 and error >= 0
+        assert processed + error == total
+
+    def test_error_path_persists_total_rows(self):
+        harness = _Harness()
+        harness.import_csv(
+            "invoice_number,invoice_date,counterparty_name,item_description,unit_price\n"
+            "INV-GOOD,2024-01-01,Acme,Widget,10.00\n"
+            "INV-BAD,2024-01-02,Acme,Widget,not-a-number\n"
+        )
+        call = harness.batch_repo.update_counts.call_args
+        assert call.kwargs["total_rows"] == 2
+        assert call.kwargs["processed_rows"] == 1
+        assert call.kwargs["error_rows"] == 1
+
+    def test_header_error_path_persists_parsed_total_rows(self):
+        harness = _Harness()
+        harness.service.import_file(
+            1, 7, "invoices.csv", "text/csv",
+            b"invoice_number,currency,counterparty_name,item_description\n"
+            b"INV-1,EGP,Acme,Widget\n"
+        )
+        call = harness.batch_repo.update_counts.call_args
+        assert call.kwargs["status"] == "failed"
+        assert call.kwargs["total_rows"] == 1
+        assert call.kwargs["processed_rows"] == 0
+        assert call.kwargs["error_rows"] == 1
+
+    def test_file_failure_path_forces_zero_total_rows(self):
+        harness = _Harness()
+        harness.service.import_file(1, 7, "invoice.pdf", "text/csv", b"stuff")
+        call = harness.batch_repo.update_counts.call_args
+        assert call.kwargs["status"] == "failed"
+        assert call.kwargs["total_rows"] == 0
+        assert call.kwargs["processed_rows"] == 0
+        assert call.kwargs["error_rows"] == 1
+
+    def test_unexpected_db_error_marks_batch_failed_and_reraises(self):
+        """A mid-pipeline DB error must leave the batch failed, not stuck."""
+        harness = _Harness()
+        harness.invoice_repo.get_by_uuid.side_effect = mysql.connector.Error(
+            "connection lost"
+        )
+
+        with pytest.raises(mysql.connector.Error):
+            harness.import_csv(
+                "uuid,invoice_number,invoice_date,currency,counterparty_name,"
+                "item_description,quantity,unit_price,vat_rate\n"
+                f"{UUID_1},INV-001,2024-01-15,EGP,Acme Corp,Widget A,2,100.00,14\n"
+            )
+
+        failed_call = None
+        for call in harness.batch_repo.update_counts.call_args_list:
+            if call.kwargs.get("status") == "failed":
+                failed_call = call
+        assert failed_call is not None
+        assert failed_call.kwargs["total_rows"] == 1
+        assert harness.batch.status == "failed"
+        assert harness.batch_repo.add_error.called
+
+
+class TestBatchRecovery:
+    def test_recover_interrupted_delegates_to_repository(self):
+        harness = _Harness()
+        harness.batch_repo.recover_interrupted_batches.return_value = 2
+        assert harness.service.recover_interrupted() == 2
+        harness.batch_repo.recover_interrupted_batches.assert_called_once_with()

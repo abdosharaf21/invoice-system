@@ -46,6 +46,8 @@ from backend.modules.imports.parsers import get_parser
 from backend.modules.imports.parsers.base import FileParseError
 from backend.modules.imports.validator import validate_group, validate_row
 from backend.modules.invoices.model import Invoice, InvoiceItem
+from backend.modules.audit_trail.model import AuditLog
+from backend.modules.audit_trail.service import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,18 @@ class ImportService:
             return None
         return user.company_id
 
+    def recover_interrupted(self) -> int:
+        """Mark any batch left in a temporary state as failed.
+
+        Called once at application startup so batches interrupted by a crash
+        or an unhandled system failure are surfaced as ``failed`` instead of
+        staying ``uploaded``/``processing`` forever.
+
+        Returns:
+            The number of batches transitioned to ``failed``.
+        """
+        return self._batch_repo.recover_interrupted_batches()
+
     def import_file(
         self,
         company_id: int,
@@ -130,12 +144,24 @@ class ImportService:
             error_rows=0,
             uploaded_by=uploaded_by,
         ))
+        logger.info(
+            "Import started batch=%s company=%s file=%r uploaded_by=%s",
+            batch.id, company_id, filename, uploaded_by,
+        )
 
         errors: List[ImportErrorInfo] = []
 
         file_type, file_error = validate_file(filename, content_type, content)
         if file_error is not None:
             errors.append(file_error)
+            record_event(
+                action=AuditLog.ACTION_IMPORT,
+                resource_type="import",
+                resource_id=str(batch.id),
+                result=AuditLog.RESULT_FAILURE,
+                company_id=company_id,
+                metadata={"filename": filename, "file_type": file_type, "reason": file_error.message},
+            )
             return self._finish_failed(batch, errors)
 
         batch.file_type = file_type
@@ -148,6 +174,14 @@ class ImportService:
                 error_code=E_FILE_ERROR,
                 message=f"No parser available for file type '{file_type}'.",
             ))
+            record_event(
+                action=AuditLog.ACTION_IMPORT,
+                resource_type="import",
+                resource_id=str(batch.id),
+                result=AuditLog.RESULT_FAILURE,
+                company_id=company_id,
+                metadata={"filename": filename, "file_type": file_type, "reason": f"No parser for '{file_type}'."},
+            )
             return self._finish_failed(batch, errors)
 
         try:
@@ -159,66 +193,127 @@ class ImportService:
                 error_code=E_FILE_ERROR,
                 message=str(exc),
             ))
+            record_event(
+                action=AuditLog.ACTION_IMPORT,
+                resource_type="import",
+                resource_id=str(batch.id),
+                result=AuditLog.RESULT_FAILURE,
+                company_id=company_id,
+                metadata={"filename": filename, "file_type": file_type, "reason": str(exc)},
+            )
             return self._finish_failed(batch, errors)
 
         self._batch_repo.start(batch.id)
-
-        mapping, header_errors = build_column_map(parsed.headers)
-        errors.extend(header_errors)
-        if header_errors:
-            return self._finish_failed(batch, errors, total_rows=parsed.total_rows)
-
-        normalized_rows, row_errors = self._normalize_rows(parsed, mapping)
-        errors.extend(row_errors)
-
-        raw_by_number, groups = self._group_rows(normalized_rows, parsed)
-
-        groups_to_persist, group_errors, duplicate_keys = self._detect_duplicates(
-            groups, company_id
-        )
-        errors.extend(group_errors)
-
         persisted_invoice_rows = 0
-        for group in groups_to_persist:
-            invoice = self._build_invoice(group, batch.id, company_id)
-            if invoice is None:
-                continue
+
+        try:
+            mapping, header_errors = build_column_map(parsed.headers)
+            errors.extend(header_errors)
+            if header_errors:
+                return self._finish_failed(batch, errors, total_rows=parsed.total_rows)
+
+            normalized_rows, row_errors = self._normalize_rows(parsed, mapping)
+            errors.extend(row_errors)
+
+            raw_by_number, groups = self._group_rows(normalized_rows, parsed)
+
+            groups_to_persist, group_errors, duplicate_keys = self._detect_duplicates(
+                groups, company_id
+            )
+            errors.extend(group_errors)
+
+            for group in groups_to_persist:
+                invoice = self._build_invoice(group, batch.id, company_id)
+                if invoice is None:
+                    continue
+                try:
+                    self._invoice_repo.create(invoice)
+                except Exception:
+                    invoice_error = ImportErrorInfo(
+                        row_number=group.first_row,
+                        field="invoice_number",
+                        error_code=E_FILE_ERROR,
+                        message=(
+                            f"Failed to persist '{group.invoice_values.get('invoice_number')}': "
+                            "a database error occurred."
+                        ),
+                    )
+                    errors.append(invoice_error)
+                    logger.exception("Failed to persist invoice for import batch %s", batch.id)
+                    continue
+                persisted_invoice_rows += len(group.item_values)
+
+            status = "completed"
+            if persisted_invoice_rows == 0 and (errors or parsed.total_rows == 0):
+                status = "failed"
+
+            self._persist_errors(batch.id, errors)
+
+            error_rows = max(parsed.total_rows - persisted_invoice_rows, 0)
+            self._batch_repo.update_counts(
+                batch.id,
+                total_rows=parsed.total_rows,
+                processed_rows=persisted_invoice_rows,
+                error_rows=error_rows,
+                status=status,
+            )
+            logger.info(
+                "Import finished batch=%s status=%s total=%d processed=%d errors=%d",
+                batch.id, status, parsed.total_rows, persisted_invoice_rows, error_rows,
+            )
+            batch.status = status
+            batch.processed_rows = persisted_invoice_rows
+            batch.error_rows = error_rows
+            batch.total_rows = parsed.total_rows
+
+            record_event(
+                action=AuditLog.ACTION_IMPORT,
+                resource_type="import",
+                resource_id=str(batch.id),
+                result=(
+                    AuditLog.RESULT_SUCCESS if status == "completed"
+                    else AuditLog.RESULT_FAILURE
+                ),
+                company_id=company_id,
+                metadata={
+                    "filename": filename,
+                    "status": status,
+                    "total_rows": parsed.total_rows,
+                    "processed_rows": persisted_invoice_rows,
+                    "error_rows": error_rows,
+                },
+            )
+
+            return ImportResult(batch=batch, errors=errors)
+        except Exception:
+            logger.error("Import batch %s failed unexpectedly", batch.id)
+            errors.append(ImportErrorInfo(
+                row_number=0,
+                field="file_content",
+                error_code=E_FILE_ERROR,
+                message=(
+                    "The import failed unexpectedly. The batch was marked "
+                    "failed and no further invoices were processed."
+                ),
+            ))
+            self._persist_errors(batch.id, errors)
+            batch.status = "failed"
+            batch.total_rows = parsed.total_rows
+            batch.processed_rows = persisted_invoice_rows
+            batch.error_rows = max(parsed.total_rows - persisted_invoice_rows, 0)
             try:
-                self._invoice_repo.create(invoice)
-            except Exception:
-                invoice_error = ImportErrorInfo(
-                    row_number=group.first_row,
-                    field="invoice_number",
-                    error_code=E_FILE_ERROR,
-                    message=(
-                        f"Failed to persist '{group.invoice_values.get('invoice_number')}': "
-                        "a database error occurred."
-                    ),
+                self._batch_repo.update_counts(
+                    batch.id,
+                    total_rows=batch.total_rows,
+                    processed_rows=batch.processed_rows,
+                    error_rows=batch.error_rows,
+                    status="failed",
                 )
-                errors.append(invoice_error)
-                logger.exception("Failed to persist invoice for import batch %s", batch.id)
-                continue
-            persisted_invoice_rows += len(group.item_values)
-
-        status = "completed"
-        if persisted_invoice_rows == 0 and (errors or parsed.total_rows == 0):
-            status = "failed"
-
-        self._persist_errors(batch.id, errors)
-
-        error_rows = max(parsed.total_rows - persisted_invoice_rows, 0)
-        self._batch_repo.update_counts(
-            batch.id,
-            processed_rows=persisted_invoice_rows,
-            error_rows=error_rows,
-            status=status,
-        )
-        batch.status = status
-        batch.processed_rows = persisted_invoice_rows
-        batch.error_rows = error_rows
-        batch.total_rows = parsed.total_rows
-
-        return ImportResult(batch=batch, errors=errors)
+            except Exception:
+                logger.exception(
+                    "Failed to persist failed status for import batch %s", batch.id
+                )
+            raise
 
     # ------------------------------------------------------------------
     # Internal pipeline steps
@@ -355,6 +450,7 @@ class ImportService:
                 currency=values.get("currency", "EGP"),
                 counterparty_name=values["counterparty_name"],
                 counterparty_tax_id=values.get("counterparty_tax_id"),
+                counterparty_email=values.get("counterparty_email"),
                 subtotal_amount=subtotal,
                 discount_amount=discount,
                 vat_amount=vat,
@@ -447,6 +543,7 @@ class ImportService:
         error_rows = 1 if errors else 0
         self._batch_repo.update_counts(
             batch.id,
+            total_rows=total_rows,
             processed_rows=0,
             error_rows=error_rows,
             status="failed",

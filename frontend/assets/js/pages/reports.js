@@ -7,7 +7,8 @@ import { el, clear, showLoading, showError } from "../utils/dom.js";
 import { listRuns, getReportSummary, getResults, getErrors, exportResults, exportErrors } from "../services/reconciliation.js";
 import { reportTabs } from "../components/reportTabs.js";
 import { renderSummaryStrip } from "../components/reportPanels.js";
-import { runStatusLabel, formatDateTime } from "../utils/format.js";
+import { runStatusLabel, statusClassToken, formatDateTime } from "../utils/format.js";
+import { t } from "../i18n/index.js";
 
 export async function renderReports(container) {
   clear(container);
@@ -16,20 +17,20 @@ export async function renderReports(container) {
   container.appendChild(
     el("div", { className: "page-head" },
       el("div", null,
-        el("h1", { className: "page-title" }, "Reports"),
-        el("div", { className: "page-head__meta" }, "Reconciliation reports · results and errors, filterable and exportable"),
+        el("h1", { className: "page-title" }, t("reports.title")),
+        el("div", { className: "page-head__meta" }, t("reports.meta")),
       ),
     ),
   );
 
-  const pickerCard = el("div", { className: "card", style: "margin-block-end:1.25rem;" },
-    el("div", { className: "card__header" }, el("div", { className: "section-title" }, "Select run")),
+  const pickerCard = el("div", { className: "card" },
+    el("div", { className: "card__header" }, el("div", { className: "section-title" }, t("reports.selectRun"))),
     el("div", { className: "card__body" }, (() => {
       const row = el("div", { className: "field-row" });
-      row.appendChild(el("label", {}, "Run / period", "for-run-picker"));
+      row.appendChild(el("label", { for: "run-picker" }, t("reports.runPeriod")));
       row.appendChild(el("select", { id: "run-picker", className: "select" }));
-      row.appendChild(el("button", { id: "run-refresh", className: "btn btn-secondary", type: "button" }, "Refresh"));
-      const hint = el("div", { className: "form-hint" }, "Runs appear once a reconciliation period has been submitted.");
+      row.appendChild(el("button", { id: "run-refresh", className: "btn btn-secondary", type: "button" }, t("reports.refresh")));
+      const hint = el("div", { className: "form-hint" }, t("reports.hint"));
       row.appendChild(el("div", { style: "flex-basis:100%;" }, hint));
       return row;
     })()),
@@ -45,11 +46,10 @@ export async function renderReports(container) {
     const runs = (env && env.runs) || [];
     if (!runs.length) {
       clear(runsCard);
-      runsCard.appendChild(el("div", { className: "card__body" },
-        el("div", { className: "empty" },
-          el("p", null, "No reconciliation runs yet."),
-          el("button", { className: "btn btn-primary", onClick: () => { window.location.hash = "#/reconciliation"; } }, "Run reconciliation"),
-        ),
+      runsCard.appendChild(el("div", { className: "state-block" },
+        el("div", { className: "state-block__icon" }, "📋"),
+        el("div", { className: "state-block__title" }, t("reports.noRuns")),
+        el("button", { className: "btn btn-primary", onClick: () => { window.location.hash = "#/reconciliation"; } }, t("reports.runReconciliation")),
       ));
       return;
     }
@@ -64,7 +64,7 @@ export async function renderReports(container) {
     pickerCard.querySelector("#run-refresh").addEventListener("click", () => renderReports(container));
     renderRun(Number(ranked[0].id));
   } catch (err) {
-    showError(runsCard, err.message || "Failed to load runs.", { onRetry: () => renderReports(container) });
+    showError(runsCard, err.message || t("reports.failedLoad"), { onRetry: () => renderReports(container) });
   }
 
   function fillSelect(node, runs) {
@@ -72,14 +72,14 @@ export async function renderReports(container) {
     for (const r of runs) {
       const opt = document.createElement("option");
       opt.value = String(r.id);
-      opt.textContent = `${r.period} · #${r.id} · ${runStatusLabel(r.status)} (${r.matched_count ?? 0} matched) · ${formatDateTime(r.finished_at)}`;
+      opt.textContent = `${r.period} · #${r.id} · ${runStatusLabel(r.status)} (${r.matched_count ?? 0} ${t("report.labelMatched")}) · ${formatDateTime(r.finished_at)}`;
       node.appendChild(opt);
     }
   }
 
   async function renderRun(runId) {
     clear(runsCard);
-    showLoading(runsCard, "Loading report…");
+    showLoading(runsCard, t("reports.loading"));
     try {
       const summary = await getReportSummary(runId);
       clear(runsCard);
@@ -87,8 +87,8 @@ export async function renderReports(container) {
       const summaryBox = el("div", { className: "card__body" });
       const runStatus = summary.run ? summary.run.status : "";
       runsCard.appendChild(el("div", { className: "card__header" },
-        el("div", { className: "section-title" }, `Run #${runId} summary`),
-        runStatus ? el("span", { className: `badge badge--${runStatus}` }, runStatusLabel(runStatus)) : null,
+        el("div", { className: "section-title" }, t("reports.summaryFor", { id: runId })),
+        runStatus ? el("span", { className: `badge badge--${statusClassToken(runStatus)}` }, runStatusLabel(runStatus)) : null,
       ));
       runsCard.appendChild(summaryBox);
       renderSummaryStrip(summaryBox, summary);
@@ -104,7 +104,7 @@ export async function renderReports(container) {
             : exportErrors(runId, format, filters),
       }, { activeTab: "results" });
     } catch (err) {
-      showError(runsCard, err.message || "Failed to load this report.", { onRetry: () => renderRun(runId) });
+      showError(runsCard, err.message || t("reports.failedLoadReport"), { onRetry: () => renderRun(runId) });
     }
   }
 }

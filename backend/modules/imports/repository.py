@@ -124,6 +124,7 @@ class ImportBatchRepository:
     def update_counts(
         self,
         batch_id: int,
+        total_rows: Optional[int] = None,
         processed_rows: Optional[int] = None,
         error_rows: Optional[int] = None,
         status: Optional[str] = None
@@ -133,6 +134,9 @@ class ImportBatchRepository:
             try:
                 set_clauses = ["updated_at = NOW()"]
                 params = []
+                if total_rows is not None:
+                    set_clauses.append("total_rows = %s")
+                    params.append(total_rows)
                 if processed_rows is not None:
                     set_clauses.append("processed_rows = %s")
                     params.append(processed_rows)
@@ -150,6 +154,36 @@ class ImportBatchRepository:
                 cursor.execute(query, tuple(params))
                 conn.commit()
                 return cursor.rowcount > 0
+            except mysql.connector.Error:
+                conn.rollback()
+                raise
+
+    def recover_interrupted_batches(self) -> int:
+        """Mark batches left in a temporary state as failed (restart recovery).
+
+        Batches that were ``uploaded`` (created but never started) or
+        ``processing`` (started but never finished) can only be leftovers of
+        a crash or an unhandled system failure: the import pipeline persists
+        invoices independently and only finalizes counters on completion.
+        Only batches that never started, or that started more than 60 minutes
+        ago, are considered interrupted so a brief concurrent startup while
+        another worker is mid-import is never mis-flagged.
+
+        Returns:
+            The number of batches transitioned to ``failed``.
+        """
+        sql = """
+            UPDATE import_batches
+            SET status = 'failed', finished_at = NOW(), updated_at = NOW()
+            WHERE status IN ('uploaded', 'processing')
+              AND (started_at IS NULL OR started_at < NOW() - INTERVAL 60 MINUTE)
+        """
+        with self._database.connection() as conn, db_cursor(conn) as cursor:
+            try:
+                cursor.execute(sql)
+                affected = cursor.rowcount
+                conn.commit()
+                return affected
             except mysql.connector.Error:
                 conn.rollback()
                 raise

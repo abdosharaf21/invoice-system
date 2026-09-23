@@ -84,7 +84,7 @@ def test_get_run_requires_reconciliation_role(client, viewer_headers):
 
 def test_post_valid_run(client, admin_headers, mock_repos):
     service = mock_repos.reconciliation_service
-    service.start_run.return_value = (_RUN, _COUNTS)
+    service.start_run.return_value = (_RUN, _COUNTS, True)
 
     response = _launch(client, admin_headers)
     assert response.status_code == 201
@@ -98,9 +98,20 @@ def test_post_valid_run(client, admin_headers, mock_repos):
     assert kwargs["period"] == "2024-03"
 
 
+def test_post_existing_active_run_returns_200(client, admin_headers, mock_repos):
+    service = mock_repos.reconciliation_service
+    service.start_run.return_value = (_RUN, _COUNTS, False)
+
+    response = _launch(client, admin_headers)
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["data"]["run"]["id"] == 1
+
+
 def test_post_forwards_money_tolerance(client, admin_headers, mock_repos):
     service = mock_repos.reconciliation_service
-    service.start_run.return_value = (_RUN, _COUNTS)
+    service.start_run.return_value = (_RUN, _COUNTS, True)
 
     response = _launch(client, admin_headers, {"period": "2024-03", "money_tolerance": "0.01"})
     assert response.status_code == 201

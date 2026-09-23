@@ -4,6 +4,8 @@
  * backend always re-validates and remains authoritative.
  */
 
+import { t } from "../i18n/index.js";
+
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -39,7 +41,7 @@ export function parseTolerance(raw) {
     return {
       ok: false,
       value: null,
-      message: "Money tolerance must be a non-negative decimal, e.g. 0.01",
+      message: t("validation.toleranceInvalid"),
     };
   }
   return { ok: true, value, message: "" };

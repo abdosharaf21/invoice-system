@@ -3,7 +3,7 @@
  */
 
 import { el, clear } from "../utils/dom.js";
-import { escapeHtml } from "../utils/escape.js";
+import { t } from "../i18n/index.js";
 
 let stack = null;
 
@@ -20,12 +20,16 @@ export function toast(message, { type = "info", duration = 4500 } = {}) {
   const s = getStack();
   if (!s) return;
 
-  const node = el("div", { className: `toast toast--${type}`, role: "status" },
+  // Errors must be announced with the assertive "alert" live region so
+  // screen-reader users hear the failure immediately; polite "status" is
+  // reserved for neutral/success updates.
+  const role = type === "error" ? "alert" : "status";
+
+  const node = el("div", { className: `toast toast--${type}`, role },
     el("span", { className: "toast__msg" }, message),
     el("button", {
-      className: "menu-item",
-      "aria-label": "Close",
-      style: "padding:0 0 0 8px;flex:0 0 auto;color:inherit;font-size:inherit;",
+      className: "toast__close",
+      "aria-label": t("common.close"),
       onClick: () => remove(node),
     }, "×"),
   );

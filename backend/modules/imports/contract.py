@@ -65,6 +65,7 @@ CONTRACT: Dict[str, FieldSpec] = {
     "currency": FieldSpec(kind="string", default=DEFAULT_CURRENCY),
     "counterparty_name": FieldSpec(kind="string", required=True),
     "counterparty_tax_id": FieldSpec(kind="string"),
+    "counterparty_email": FieldSpec(kind="string"),
     "item_description": FieldSpec(kind="string", required=True),
     "quantity": FieldSpec(kind="quantity", default=DEFAULT_QUANTITY),
     "unit_price": FieldSpec(kind="money", default=DEFAULT_MONEY_ZERO),
@@ -90,6 +91,7 @@ INVOICE_LEVEL_FIELDS = (
     "currency",
     "counterparty_name",
     "counterparty_tax_id",
+    "counterparty_email",
 )
 
 ITEM_LEVEL_FIELDS = (
@@ -137,6 +139,17 @@ _RAW_ALIASES: Dict[str, list] = {
         "supplier_tax_id",
         "vendor_tax_id",
         "tax_id",
+    ],
+    "counterparty_email": [
+        "counterparty_email",
+        "customer_email",
+        "customer_email_address",
+        "supplier_email",
+        "vendor_email",
+        "buyer_email",
+        "client_email",
+        "email_address",
+        "email",
     ],
     "item_description": [
         "item_description",

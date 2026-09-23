@@ -1,0 +1,1580 @@
+{
+  "summary": {
+    "PASS": 153,
+    "FAIL": 0,
+    "BLOCKED": 0,
+    "N-A": 0
+  },
+  "results": [
+    {
+      "status": "PASS",
+      "name": "auth | admin login returns 200 + JWT tokens",
+      "evidence": {
+        "status": 200,
+        "keys": [
+          "access_token",
+          "refresh_token",
+          "token_type",
+          "user"
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | envelope carries success flag",
+      "evidence": null,
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | token issued to admin user",
+      "evidence": {
+        "avatar_path": null,
+        "company_id": 1,
+        "created_at": "2026-09-18T07:40:05",
+        "date_format": "YYYY-MM-DD",
+        "email": "admin.a@uat.test",
+        "first_name": "A",
+        "full_name": "A Admin",
+        "id": 1,
+        "is_active": true,
+        "language": "en",
+        "last_login_at": null,
+        "last_name": "Admin",
+        "number_format": "#,##0.00",
+        "pagination_size": 25,
+        "roles": [
+          "admin"
+        ],
+        "status": "active",
+        "theme": "light",
+        "timezone": "UTC",
+        "updated_at": "2026-09-18T07:40:05",
+        "username": "a_admin"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | wrong password rejected 401",
+      "evidence": {
+        "status": 401,
+        "success": false
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | unknown email rejected 401",
+      "evidence": {
+        "status": 401,
+        "code": "INVALID_CREDENTIALS"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | missing password rejected 4xx",
+      "evidence": {
+        "status": 400,
+        "code": "BAD_REQUEST"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | malformed json rejected 4xx",
+      "evidence": {
+        "status": 400,
+        "success": false
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | me returns profile",
+      "evidence": {
+        "avatar_path": null,
+        "company_id": 1,
+        "created_at": "2026-09-18T07:40:05",
+        "date_format": "YYYY-MM-DD",
+        "email": "admin.a@uat.test",
+        "first_name": "A",
+        "full_name": "A Admin",
+        "id": 1,
+        "is_active": true,
+        "language": "en",
+        "last_login_at": null,
+        "last_name": "Admin",
+        "number_format": "#,##0.00",
+        "pagination_size": 25,
+        "roles": [
+          "admin"
+        ],
+        "status": "active",
+        "theme": "light",
+        "timezone": "UTC",
+        "updated_at": "2026-09-18T07:40:05",
+        "username": "a_admin"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | me profile has role+company",
+      "evidence": {
+        "roles": [
+          "admin"
+        ],
+        "company_id": 1
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | refresh issues new access token",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | refreshed token authenticates",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | protected call without token 401",
+      "evidence": {
+        "status": 401,
+        "code": "TOKEN_REQUIRED"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | malformed bearer rejected 401",
+      "evidence": {
+        "status": 401,
+        "code": "INVALID_TOKEN"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | expired token rejected 401 TOKEN_EXPIRED",
+      "evidence": {
+        "status": 401,
+        "code": "TOKEN_EXPIRED"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | logout succeeds",
+      "evidence": null,
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | revoked access token rejected",
+      "evidence": {
+        "status": 401,
+        "code": "TOKEN_REVOKED"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | revoked refresh token rejected",
+      "evidence": {
+        "status": 401,
+        "code": "UNAUTHORIZED"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | self password change succeeds",
+      "evidence": {
+        "status": 200,
+        "success": true
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | old password now rejected",
+      "evidence": {
+        "status": 401
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | new password authenticates",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "auth | /api/v1 alias route works",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tenant | company A user list contains only company A users",
+      "evidence": {
+        "ids": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tenant | company B user list contains only company B users",
+      "evidence": {
+        "ids": [
+          5,
+          6
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tenant | company settings scoped to own company",
+      "evidence": {
+        "address": "Address A",
+        "created_at": "2026-09-18T07:40:05",
+        "default_currency": "EGP",
+        "default_tax_rate": 14.0,
+        "email": "company.a@uat.test",
+        "fiscal_year_start": "01-01",
+        "id": 1,
+        "is_active": true,
+        "logo_path": null,
+        "name": "UAT Company A",
+        "phone": "Phone-A",
+        "tax_registration_number": "UATA1111111111",
+        "updated_at": "2026-09-18T07:40:05",
+        "website": "https://a.uat.test"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tenant | company B settings scoped to company 2",
+      "evidence": null,
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tenant | cross-tenant import batch read 404",
+      "evidence": {
+        "status": 404
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tenant | cross-tenant reconciliation run read 404",
+      "evidence": {
+        "status": 404
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tenant | company B audit log scoped to company 2 only",
+      "evidence": {
+        "count": 5,
+        "companies": [
+          2
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tenant | company B admin sees own identity",
+      "evidence": null,
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | accountant blocked from user admin (403)",
+      "evidence": {
+        "status": 403
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | accountant blocked from user create (403)",
+      "evidence": {
+        "status": 403
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | viewer blocked from imports (403)",
+      "evidence": {
+        "status": 403
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | viewer blocked from reconciliation (403)",
+      "evidence": {
+        "status": 403
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | admin creates user",
+      "evidence": {
+        "status": 201,
+        "id": 7
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | new user can log in",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | admin updates user role",
+      "evidence": {
+        "avatar_path": null,
+        "company_id": 1,
+        "created_at": "2026-09-18T07:40:13",
+        "date_format": "YYYY-MM-DD",
+        "email": "tmp.acc@uat.test",
+        "first_name": "Temp",
+        "full_name": "Temp Acc",
+        "id": 7,
+        "is_active": true,
+        "language": "en",
+        "last_login_at": null,
+        "last_name": "Acc",
+        "number_format": "#,##0.00",
+        "pagination_size": 25,
+        "roles": [
+          "manager"
+        ],
+        "status": "active",
+        "theme": "light",
+        "timezone": "UTC",
+        "updated_at": "2026-09-18T07:40:14",
+        "username": "tmp.acc"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | admin resets user password",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | reset password authenticates",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | admin deactivates user",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | deactivated user cannot log in",
+      "evidence": {
+        "status": 401
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | reactivated user logs in again",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | cannot deactivate last admin in company (4xx)",
+      "evidence": {
+        "status": 400,
+        "code": "BAD_REQUEST"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | admin cannot self-demote/change own role (4xx)",
+      "evidence": {
+        "status": 400,
+        "code": "BAD_REQUEST"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | admin deletes user",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "rbac users | deleted user cannot log in",
+      "evidence": {
+        "status": 401
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | valid import completes synchronously (201)",
+      "evidence": {
+        "status": 201,
+        "batch_status": "completed"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | valid import counters (6 rows/6 processed/0 errors)",
+      "evidence": {
+        "total_rows": 6,
+        "processed": 6,
+        "errors": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | DB persisted 5 invoices for company A",
+      "evidence": {
+        "count": 5
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | INV-A001 totals 1000/140/1140",
+      "evidence": [
+        1000.0,
+        140.0,
+        1140.0,
+        1
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | INV-A002 totals 500/70/570",
+      "evidence": [
+        500.0,
+        70.0,
+        570.0,
+        1
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | INV-A003 totals 100/14/114",
+      "evidence": [
+        100.0,
+        14.0,
+        114.0,
+        1
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | INV-A004 multi-line totals 800/112/912 with 2 items",
+      "evidence": [
+        800.0,
+        112.0,
+        912.0,
+        2
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | INV-A005 totals 250/35/285",
+      "evidence": [
+        250.0,
+        35.0,
+        285.0,
+        1
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | batch detail readable",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | partial import processed 1 / error 1",
+      "evidence": {
+        "processed": 1,
+        "errors": 1
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | valid row persisted, invalid row skipped",
+      "evidence": {
+        "INV-A006": 1,
+        "INV-A-BAD": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | dup-in-file processed 1 / error 1",
+      "evidence": {
+        "processed": 1,
+        "errors": 1
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | INV-A007 persisted exactly once",
+      "evidence": null,
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | dup-in-file error code DUPLICATE_IN_FILE",
+      "evidence": [
+        "DUPLICATE_IN_FILE"
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | re-import fails with 6 rejected rows",
+      "evidence": {
+        "processed": 0,
+        "errors": 6
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | no duplicate rows in DB after re-import",
+      "evidence": null,
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | re-import errors all DUPLICATE_IN_DB",
+      "evidence": [
+        "DUPLICATE_IN_DB",
+        "DUPLICATE_IN_DB",
+        "DUPLICATE_IN_DB",
+        "DUPLICATE_IN_DB",
+        "DUPLICATE_IN_DB"
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | non-CSV file rejected (4xx or failed batch)",
+      "evidence": {
+        "status": 201,
+        "batch_status": "failed",
+        "code": null
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | company B import succeeds",
+      "evidence": {
+        "status": 201,
+        "processed": 1
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "import | company B cannot read company A batch (404)",
+      "evidence": {
+        "status": 404
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tax | company A has 6 seeded authority invoices",
+      "evidence": {
+        "count": 6
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tax | company B has 1 seeded authority invoice",
+      "evidence": {
+        "count": 1
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tax | tax A-TAX-001 mirror amounts",
+      "evidence": [
+        [
+          1000.0,
+          1000.0,
+          140.0,
+          1140.0
+        ]
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tax | tax A-TAX-002 mirror intentionally differs (vat/total)",
+      "evidence": [
+        [
+          500.0,
+          100.0,
+          600.0
+        ]
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tax | invalid-uuid tax doc present for INVALID outcome",
+      "evidence": {
+        "uuid": "not-a-valid-uuid"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "tax | one authority doc matched via internal_id (INV-A005)",
+      "evidence": {
+        "count": 1
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | reconciliation run completes",
+      "evidence": {
+        "status": 201,
+        "run_status": "completed"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | run counts (7 invoices / 6 tax / 3 matched / 6 unmatched)",
+      "evidence": {
+        "invoices": 7,
+        "tax": 6,
+        "matched": 3,
+        "unmatched": 6
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | run aggregates extra=1 invalid=1 errors=5",
+      "evidence": {
+        "extra": 1,
+        "invalid": 1,
+        "errors": 5
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | run detail readable",
+      "evidence": {
+        "status": 200,
+        "id": 1
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | run summary endpoints returns numbers",
+      "evidence": {
+        "run": {
+          "company_id": 1,
+          "created_at": "2026-09-18T07:40:17",
+          "error_count": 5,
+          "finished_at": "2026-09-18T07:40:17",
+          "id": 1,
+          "invoice_count": 7,
+          "matched_count": 3,
+          "period": "2026-08",
+          "started_at": "2026-09-18T07:40:17",
+          "status": "completed",
+          "tax_invoice_count": 6,
+          "unmatched_count": 6,
+          "updated_at": "2026-09-18T07:40:17"
+        },
+        "summary": {
+          "errors": 5,
+          "extra_in_tax_authority": 1,
+          "invalid": 1,
+          "matched": 3,
+          "mismatched": 1,
+          "missing_in_tax_authority": 3,
+          "total_results": 9,
+          "unmatched": 6
+        }
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | run list includes the new run",
+      "evidence": {
+        "ids": [
+          1
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | 9 result rows produced",
+      "evidence": {
+        "count": 9
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | outcome distribution matched=3 mismatched=1 missing=3 extra=1 invalid=1",
+      "evidence": {
+        "matched": 3,
+        "mismatched": 1,
+        "missing_in_tax_authority": 3,
+        "extra_in_tax_authority": 1,
+        "invalid": 1
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | result filter match_status=matched returns 3",
+      "evidence": {
+        "count": 3
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | result pagination page_size=4 honored",
+      "evidence": {
+        "count": 4
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | INV-A001 classified matched",
+      "evidence": [
+        [
+          "matched"
+        ]
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | INV-A002 classified mismatched",
+      "evidence": [
+        [
+          "mismatched"
+        ]
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | INV-A003 classified missing_in_tax_authority",
+      "evidence": [
+        [
+          "missing_in_tax_authority"
+        ]
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | INV-A005 classified matched",
+      "evidence": [
+        [
+          "matched"
+        ]
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | INV-A006 classified missing_in_tax_authority",
+      "evidence": [
+        [
+          "missing_in_tax_authority"
+        ]
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | A2 mismatch raises VAT/TOTAL item errors",
+      "evidence": [
+        "ITEM_TOTAL_SUM_MISMATCH",
+        "ITEM_VAT_SUM_MISMATCH",
+        "TOTAL_AMOUNT_MISMATCH",
+        "VAT_AMOUNT_MISMATCH"
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | tx-baduuid yields INVALID outcome",
+      "evidence": [
+        [
+          "invalid"
+        ]
+      ],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | error listing returns the mismatch errors",
+      "evidence": {
+        "count": 5
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | results CSV export downloads",
+      "evidence": {
+        "status": 200,
+        "batch_len": 2196
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | errors CSV export downloads",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | company B run matches only its own invoice",
+      "evidence": {
+        "invoices": 1,
+        "matched": 1
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "reconciliation | company B cannot read company A run (404)",
+      "evidence": {
+        "status": 404
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "report | report summary exposes reliable figures for the period",
+      "evidence": {
+        "run": {
+          "company_id": 1,
+          "created_at": "2026-09-18T07:40:17",
+          "error_count": 5,
+          "finished_at": "2026-09-18T07:40:17",
+          "id": 1,
+          "invoice_count": 7,
+          "matched_count": 3,
+          "period": "2026-08",
+          "started_at": "2026-09-18T07:40:17",
+          "status": "completed",
+          "tax_invoice_count": 6,
+          "unmatched_count": 6,
+          "updated_at": "2026-09-18T07:40:17"
+        },
+        "summary": {
+          "errors": 5,
+          "extra_in_tax_authority": 1,
+          "invalid": 1,
+          "matched": 3,
+          "mismatched": 1,
+          "missing_in_tax_authority": 3,
+          "total_results": 9,
+          "unmatched": 6
+        }
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "report | results report has source invoice + values",
+      "evidence": {
+        "sample": {
+          "account_invoice_id": 1,
+          "tax_invoice_id": 1,
+          "match_status": "matched",
+          "discrepancy_amount": "0.00"
+        }
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "report | results XLSX export downloads",
+      "evidence": {
+        "status": 200,
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | email status reports disabled on primary",
+      "evidence": {
+        "enabled": false,
+        "from_addr": null,
+        "host": "",
+        "port": 587,
+        "provider": null,
+        "use_ssl": false,
+        "use_tls": true,
+        "workflows": [
+          {
+            "description": "After a reconciliation run, email a grouped summary to every taxpayer/counterparty whose invoices were affected by a discrepancy.",
+            "name": "reconciliation.discrepancies"
+          }
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | email test rejected when disabled (400)",
+      "evidence": {
+        "status": 400,
+        "success": false,
+        "code": "BAD_REQUEST"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | deliveries recorded for affected rows (skipped/no_email/invalid)",
+      "evidence": {
+        "statuses": [
+          "invalid",
+          "no_email",
+          "skipped"
+        ],
+        "count": 4
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | resend rejected when email disabled (400)",
+      "evidence": {
+        "status": 400,
+        "code": "BAD_REQUEST"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | accountant blocked from email admin (403)",
+      "evidence": {
+        "status": 403
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | email instance reports enabled",
+      "evidence": {
+        "enabled": true,
+        "from_addr": "uat@invoice.test",
+        "host": "127.0.0.1",
+        "port": 2525,
+        "provider": "smtp",
+        "use_ssl": false,
+        "use_tls": false,
+        "workflows": [
+          {
+            "description": "After a reconciliation run, email a grouped summary to every taxpayer/counterparty whose invoices were affected by a discrepancy.",
+            "name": "reconciliation.discrepancies"
+          }
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | email test delivered on enabled instance",
+      "evidence": {
+        "status": 200,
+        "data": {
+          "delivered": true,
+          "request_id": "dcc025d5951345e79378c06a738d5699",
+          "to": "test@example.test"
+        }
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | invalid test recipient rejected",
+      "evidence": {
+        "status": 400,
+        "code": "BAD_REQUEST"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | email test without auth rejected",
+      "evidence": {
+        "status": 401
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | enabled instance runs for the period",
+      "evidence": {
+        "status": 201,
+        "run_status": "completed"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | deliveries sent through mock SMTP on enabled instance",
+      "evidence": {
+        "sent": 2,
+        "statuses": [
+          "invalid",
+          "no_email",
+          "sent"
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | resend delivers again on enabled instance",
+      "evidence": {
+        "status": 200,
+        "success": true
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | delivery row status sent in DB",
+      "evidence": {
+        "db_status": "sent"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | mock SMTP captured the messages",
+      "evidence": {
+        "captured": 4
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "email | message carries subject + X-Request-Id",
+      "evidence": {
+        "subject": "E-Invoice email test",
+        "x_request_id": "dcc025d5951345e79378c06a738d5699",
+        "to": "test@example.test"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "audit | audit log populated with workflow actions",
+      "evidence": {
+        "count": 38,
+        "actions": [
+          "create",
+          "delete",
+          "import",
+          "login",
+          "logout",
+          "other",
+          "reconcile",
+          "update"
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "audit | audit log rows carry actor context",
+      "evidence": {
+        "action": "update",
+        "actor_email": "admin.a@uat.test",
+        "actor_id": 1,
+        "actor_type": "user",
+        "after_state": null,
+        "before_state": null,
+        "company_id": 1,
+        "created_at": "2026-09-18T07:40:17",
+        "id": 41,
+        "ip_address": "127.0.0.1",
+        "metadata": {
+          "event": "resend",
+          "run_id": 3
+        },
+        "request_id": "44708fe4eb14438ab9244fd5d80765cf",
+        "resource_id": "5",
+        "resource_type": "email_delivery",
+        "result": "success",
+        "role": "admin",
+        "user_agent": "Python-urllib/3.12"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "audit | audit filter by action works",
+      "evidence": {
+        "count": 5
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "audit | audit pagination honored",
+      "evidence": {
+        "count": 3
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "audit | accountant blocked from audit (403)",
+      "evidence": {
+        "status": 403
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "audit | audit metadata does not leak secrets",
+      "evidence": {
+        "leaked": []
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | app settings readable",
+      "evidence": {
+        "application_name": "E-Invoice & Reconciliation",
+        "application_subtitle": "Tax authority compliance",
+        "date_format": "YYYY-MM-DD",
+        "default_language": "en",
+        "default_theme": "light",
+        "number_format": "#,##0.00",
+        "pagination_size": 25,
+        "timezone": "UTC"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | admin updates application settings",
+      "evidence": {
+        "application_name": "UAT Branding X",
+        "application_subtitle": "Tax authority compliance",
+        "date_format": "YYYY-MM-DD",
+        "default_language": "en",
+        "default_theme": "light",
+        "number_format": "#,##0.00",
+        "pagination_size": 25,
+        "timezone": "UTC"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | application settings change persisted",
+      "evidence": {
+        "application_name": "UAT Branding X",
+        "application_subtitle": "Tax authority compliance",
+        "date_format": "YYYY-MM-DD",
+        "default_language": "en",
+        "default_theme": "light",
+        "number_format": "#,##0.00",
+        "pagination_size": 25,
+        "timezone": "UTC"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | accountant blocked from application settings (403)",
+      "evidence": {
+        "status": 403
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | invalid application setting rejected",
+      "evidence": {
+        "status": 400,
+        "code": "BAD_REQUEST"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | admin updates own company settings",
+      "evidence": {
+        "address": "Address A",
+        "created_at": "2026-09-18T07:40:05",
+        "default_currency": "EGP",
+        "default_tax_rate": 14.0,
+        "email": "company.a@uat.test",
+        "fiscal_year_start": "01-01",
+        "id": 1,
+        "is_active": true,
+        "logo_path": null,
+        "name": "UAT Company A (renamed)",
+        "phone": "Phone-A",
+        "tax_registration_number": "UATA1111111111",
+        "updated_at": "2026-09-18T07:40:18",
+        "website": "https://a.uat.test"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | company rename persisted in DB",
+      "evidence": {
+        "name": "UAT Company A (renamed)"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | user updates own preferences",
+      "evidence": {
+        "avatar_path": null,
+        "date_format": "YYYY-MM-DD",
+        "language": "en",
+        "number_format": "#,##0.00",
+        "pagination_size": 25,
+        "theme": "light",
+        "timezone": "UTC"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | user preferences persisted",
+      "evidence": {
+        "avatar_path": null,
+        "date_format": "YYYY-MM-DD",
+        "language": "en",
+        "number_format": "#,##0.00",
+        "pagination_size": 25,
+        "theme": "light",
+        "timezone": "UTC"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "settings | invalid theme rejected",
+      "evidence": {
+        "status": 400
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "error | unknown route -> 404 envelope",
+      "evidence": {
+        "status": 404,
+        "code": "NOT_FOUND"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "error | method not allowed -> 405",
+      "evidence": {
+        "status": 405,
+        "code": "METHOD_NOT_ALLOWED"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "error | unauthorized role (403)",
+      "evidence": {
+        "status": 403
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "error | not found resource -> 404",
+      "evidence": {
+        "status": 404,
+        "code": "NOT_FOUND"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "error | error responses carry X-Request-Id",
+      "evidence": {
+        "x-request-id": "43ea19c86617492a93345afe00e8cd73"
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "health | health is ok",
+      "evidence": {
+        "message": "Invoice System API is running",
+        "status": "ok",
+        "success": true
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "health | /api/v1/health alias",
+      "evidence": null,
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "health | readiness ok with database",
+      "evidence": {
+        "data": {
+          "database": "ok"
+        },
+        "message": "Ready",
+        "status": "ok",
+        "success": true
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "health | representative authenticated request healthy",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "cross flow | cross-flow: settings reachable mid-session",
+      "evidence": null,
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "cross flow | cross-flow: results still consistent after co-run email instance",
+      "evidence": {
+        "status": 200
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "cross flow | concurrent start for same period yields one run",
+      "evidence": {
+        "run_ids": [
+          4
+        ]
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "cross flow | cross-flow: post-logout token rejected",
+      "evidence": {
+        "status": 401
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | no orphan rows in invoices",
+      "evidence": {
+        "orphans": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | no orphan rows in invoice_items",
+      "evidence": {
+        "orphans": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | no orphan rows in tax_invoice_items",
+      "evidence": {
+        "orphans": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | no orphan rows in reconciliation_results",
+      "evidence": {
+        "orphans": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | no orphan rows in reconciliation_errors",
+      "evidence": {
+        "orphans": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | no orphan rows in email_deliveries",
+      "evidence": {
+        "orphans": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | no orphan rows in audit_logs",
+      "evidence": {
+        "orphans": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | no orphan rows in import_batches",
+      "evidence": {
+        "orphans": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | no orphan rows in import_batch_errors",
+      "evidence": {
+        "orphans": 0
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | integrity scan found no orphan rows",
+      "evidence": {
+        "problems": []
+      },
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | all import batch counters self-consistent",
+      "evidence": [],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | reconciliation run counters internally consistent",
+      "evidence": [],
+      "failure": null
+    },
+    {
+      "status": "PASS",
+      "name": "integrity | stored invoice totals equal recomputed item sums",
+      "evidence": {
+        "mismatches": []
+      },
+      "failure": null
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+uuid,invoice_number,invoice_date,due_date,currency,counterparty_name,counterparty_tax_id,counterparty_email,item_description,quantity,unit_price,vat_rate
+bbbbbbbb-0000-4000-8000-000000000001,INV-B001,2026-08-10,2026-09-09,EGP,Company B Counterparty,9000111222,cpb.receivable@b.test,Printed materials,8,25.00,14

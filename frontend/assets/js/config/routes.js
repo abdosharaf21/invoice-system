@@ -15,7 +15,9 @@ import {
   renderRunDetail,
   renderReports,
   renderUsers,
+  renderAuditLog,
   renderAccount,
+  renderSettings,
   renderNotFound,
   renderForbidden,
 } from "../pages/index.js";
@@ -30,69 +32,93 @@ export const routeTable = [
     match: /^login$/i,
     roles: ALL,
     section: null,
-    breadcrumb: "Login",
+    breadcrumb: "nav.login",
     render: renderLogin,
   },
   {
     path: "dashboard",
     match: /^dashboard$/i,
-    section: "Overview",
-    breadcrumb: "Dashboard",
+    section: "nav.overview",
+    breadcrumb: "nav.dashboard",
     render: renderDashboard,
   },
   {
     path: "imports",
     match: /^imports$/i,
-    section: "Operations",
+    section: "nav.operations",
     roles: ["admin", "accountant", "manager"],
-    breadcrumb: "Imports",
+    breadcrumb: "nav.imports",
     render: renderImports,
   },
   {
     path: "imports/:id",
     match: /^imports\/(\d+)$/i,
-    section: "Operations",
+    section: "nav.operations",
     roles: ["admin", "accountant", "manager"],
-    breadcrumb: "Import Detail",
+    breadcrumb: "nav.importDetail",
     render: renderImportDetail,
   },
   {
     path: "reconciliation",
     match: /^reconciliation$/i,
-    section: "Operations",
+    section: "nav.operations",
     roles: ["admin", "accountant", "manager"],
-    breadcrumb: "Reconciliation",
+    breadcrumb: "nav.reconciliation",
     render: renderReconciliation,
   },
   {
     path: "reconciliation/:id",
     match: /^reconciliation\/(\d+)$/i,
-    section: "Operations",
+    section: "nav.operations",
     roles: ["admin", "accountant", "manager"],
-    breadcrumb: "Run Detail",
+    breadcrumb: "nav.runDetail",
     render: renderRunDetail,
   },
   {
     path: "reports",
     match: /^reports$/i,
-    section: "Operations",
+    section: "nav.operations",
     roles: ["admin", "accountant", "manager"],
-    breadcrumb: "Reports",
+    breadcrumb: "nav.reports",
     render: renderReports,
   },
   {
     path: "users",
     match: /^users$/i,
-    section: "Administration",
+    section: "nav.administration",
     roles: ["admin"],
-    breadcrumb: "Users",
+    breadcrumb: "nav.users",
     render: renderUsers,
+  },
+  {
+    path: "audit-log",
+    match: /^audit-log$/i,
+    section: "nav.monitoring",
+    roles: ["admin", "manager"],
+    breadcrumb: "nav.auditLog",
+    render: renderAuditLog,
+  },
+  {
+    path: "settings",
+    match: /^settings$/i,
+    section: "nav.administration",
+    roles: ALL,
+    breadcrumb: "nav.settings",
+    render: renderSettings,
+  },
+  {
+    path: "settings/:section",
+    match: /^settings\/([a-z-]+)$/i,
+    section: "nav.administration",
+    roles: ALL,
+    breadcrumb: "nav.settings",
+    render: renderSettings,
   },
   {
     path: "account",
     match: /^account$/i,
-    section: "Account",
-    breadcrumb: "My Account",
+    section: "account.nav",
+    breadcrumb: "nav.account",
     render: renderAccount,
   },
 ];
@@ -124,34 +150,44 @@ export function canSeeSection(section) {
   return role !== null && section.minRoles.includes(role);
 }
 
-/** Generate the top-level nav items for the sidebar (ordered). */
+/** Generate the top-level nav items for the sidebar (ordered). Labels are
+ * i18n keys resolved at render time by the shell. */
 export const navSections = [
   {
-    title: "Overview",
+    title: "nav.overview",
     items: [
-      { label: "Dashboard", hash: "#/dashboard", icon: "dashboard" },
+      { label: "nav.dashboard", hash: "#/dashboard", icon: "dashboard" },
     ],
   },
   {
-    title: "Operations",
+    title: "nav.operations",
     minRoles: ["admin", "accountant", "manager"],
     items: [
-      { label: "Imports", hash: "#/imports", icon: "import" },
-      { label: "Reconciliation", hash: "#/reconciliation", icon: "reconciliation" },
-      { label: "Reports", hash: "#/reports", icon: "reports" },
+      { label: "nav.imports", hash: "#/imports", icon: "import" },
+      { label: "nav.reconciliation", hash: "#/reconciliation", icon: "reconciliation" },
+      { label: "nav.reports", hash: "#/reports", icon: "reports" },
     ],
   },
   {
-    title: "Administration",
+    title: "nav.administration",
     minRoles: ["admin"],
     items: [
-      { label: "Users", hash: "#/users", icon: "users" },
+      { label: "nav.users", hash: "#/users", icon: "users" },
+      { label: "nav.settings", hash: "#/settings", icon: "settings" },
+    ],
+  },
+  {
+    title: "nav.monitoring",
+    minRoles: ["admin", "manager"],
+    items: [
+      { label: "nav.auditLog", hash: "#/audit-log", icon: "search" },
     ],
   },
 ];
 
 export const accountNav = {
   items: [
-    { label: "My Account", hash: "#/account", icon: "account" },
+    { label: "nav.account", hash: "#/account", icon: "account" },
+    { label: "nav.settings", hash: "#/settings", icon: "settings" },
   ],
 };

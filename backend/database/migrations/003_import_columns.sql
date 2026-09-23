@@ -1,4 +1,5 @@
 -- Migration 003: Import-targeted column additions.
+-- verify: invoices
 --
 -- Phase 3 (Accounting File Import) requires a few schema extensions:
 --

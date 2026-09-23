@@ -11,9 +11,26 @@ export function startRun(period, moneyTolerance = null) {
   return api.post("/api/reconciliation/runs", body);
 }
 
-/** List runs for the authenticated company. */
+/**
+ * List runs for the authenticated company.
+ *
+ * Accepts either positional args ``listRuns(limit, offset)`` or an options
+ * object ``listRuns({ limit, offset })``. Pagination values are coerced to
+ * integers and defaulted when missing/empty so the backend always receives
+ * valid integer query parameters.
+ */
 export function listRuns(limit = 50, offset = 0) {
-  return api.get("/api/reconciliation/runs", { limit, offset });
+  const opts =
+    limit && typeof limit === "object" ? limit : { limit, offset };
+  return api.get("/api/reconciliation/runs", {
+    limit: normalizePage(opts.limit, 50),
+    offset: normalizePage(opts.offset, 0),
+  });
+}
+
+function normalizePage(value, fallback) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : fallback;
 }
 
 /** Get a single run + per-status counts. */

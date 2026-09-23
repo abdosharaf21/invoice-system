@@ -116,7 +116,14 @@ def test_get_summary_not_found(client, admin_headers, mock_repos):
 
 def test_results_paginated_envelope(client, admin_headers, mock_repos):
     service = mock_repos.reconciliation_service
-    service.paginate_results.return_value = _ENVELOPE
+    envelope = {
+        "items": [{"id": 1, "match_status": c.MATCHED}],
+        "page": 2,
+        "page_size": 25,
+        "total": 27,
+        "total_pages": 2,
+    }
+    service.paginate_results.return_value = envelope
 
     response = client.get(
         "/api/reconciliation/runs/1/results?page=2&page_size=25&match_status=matched",
@@ -124,9 +131,12 @@ def test_results_paginated_envelope(client, admin_headers, mock_repos):
     )
     assert response.status_code == 200
     data = response.get_json()["data"]
-    assert data["items"][0]["match_status"] == c.MATCHED
-    assert data["page"] == 1
-    assert data["total_pages"] == 1
+    assert data["items"] == envelope["items"]
+    # The route must echo the service's pagination metadata verbatim.
+    assert data["page"] == 2
+    assert data["page_size"] == 25
+    assert data["total"] == 27
+    assert data["total_pages"] == 2
     service.paginate_results.assert_called_once()
     args = service.paginate_results.call_args.args
     assert args[:4] == (1, 1, 2, 25)

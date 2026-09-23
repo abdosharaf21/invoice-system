@@ -11,5 +11,7 @@ export { renderReconciliation } from "./reconciliation.js";
 export { renderRunDetail } from "./runDetail.js";
 export { renderReports } from "./reports.js";
 export { renderUsers } from "./users.js";
+export { renderAuditLog } from "./auditLog.js";
 export { renderAccount } from "./account.js";
+export { renderSettings } from "./settings.js";
 export { renderNotFound, renderForbidden } from "./errors.js";

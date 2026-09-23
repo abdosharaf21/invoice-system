@@ -5,6 +5,8 @@
    =========================================================================== */
 
 :root {
+  color-scheme: light;
+
   /* ---- Brand palette ---- */
   --color-primary: #1f4e79;          /* institutional blue */
   --color-primary-dark: #183c5d;
@@ -23,7 +25,7 @@
   /* ---- Text ---- */
   --color-text: #17212b;
   --color-text-secondary: #46545f;
-  --color-text-muted: #6b7887;
+  --color-text-muted: #5f6d7c;
   --color-text-inverse: #ffffff;
 
   /* ---- Semantic ---- */
@@ -46,6 +48,13 @@
   --color-info-bg: #e9f1f8;
   --color-info-border: #bcd5e8;
 
+  /* ---- Interaction & elevated surfaces ---- */
+  --color-primary-hover: var(--color-primary-dark);
+  --color-primary-active: #162f4b;
+  --color-surface-muted: var(--color-surface-alt);
+  --color-text-subtle: #7d8a98;
+  --color-overlay: rgba(9, 18, 28, 0.55);
+
   /* ---- Status: reconciliation results ---- */
   --status-matched-bg: #e7f4ec;   --status-matched-text: #14643a; --status-matched-border: #a9d9bd;
   --status-mismatched-bg: #fff4df; --status-mismatched-text: #8a5a00; --status-mismatched-border: #ecd6a0;
@@ -61,6 +70,19 @@
   --status-uploaded-bg: #eef1f4;   --status-uploaded-text: #46545f;   --status-uploaded-border: #cbd3dc;
   --status-processing-bg: #e9f1f8; --status-processing-text: #1f5c8b; --status-processing-border: #bcd5e8;
 
+  /* ---- Roles ---- */
+  --role-admin-bg: #eef0f8;   --role-admin-text: #3b4287;   --role-admin-border: #c4c9ec;
+
+  /* ---- Distribution bars ---- */
+  --bar-missing: #d97b29;
+  --bar-extra: #5a62b3;
+
+  /* ---- KPI / summary cards ---- */
+  --kpi-accent: var(--color-primary);
+
+  /* ---- Tables ---- */
+  --table-row-hover: #edf3f8;
+
   /* ---- Buttons ---- */
   --btn-primary-bg: var(--color-primary);
   --btn-primary-text: #ffffff;
@@ -74,6 +96,11 @@
   --btn-danger-bg: #ffffff;
   --btn-danger-text: var(--color-danger);
   --btn-danger-border: var(--color-danger-border);
+  --btn-danger-hover-bg: var(--color-danger-bg);
+
+  --btn-success-bg: var(--color-accent);
+  --btn-success-text: #ffffff;
+  --btn-success-hover: var(--color-accent-dark);
 
   --btn-ghost-text: #33414d;
   --btn-ghost-hover: #eef2f6;
@@ -124,6 +151,18 @@
   --header-height: 56px;
   --content-max: 1600px;
 
+  /* ---- Sidebar (dark band on institutional blue) ---- */
+  --sidebar-bg: var(--color-primary-darker);
+  --sidebar-text: #cdd8e3;
+  --sidebar-text-strong: #c5d2de;
+  --sidebar-text-muted: #8fa3b7;
+  --sidebar-text-faint: #778ea4;
+  --sidebar-label: #7f95a9;
+  --sidebar-text-active: #ffffff;
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
+  --sidebar-hover-text: #ffffff;
+  --sidebar-divider: rgba(255, 255, 255, 0.08);
+
   /* ---- Motion ---- */
   --transition-fast: 120ms;
   --transition-base: 180ms;
@@ -136,20 +175,83 @@
   --z-dropdown: 50;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Dark mode is deliberately conservative: enterprise surfaces keep a
-       tinted slate, not pure black, to preserve readability. */
-    --color-bg: #10161d;
-    --color-surface: #182130;
-    --color-surface-alt: #1e2837;
-    --color-surface-raised: #202b3c;
-    --color-border: #2b3949;
-    --color-border-strong: #3b4c5f;
-    --color-text: #e6edf4;
-    --color-text-secondary: #aebccb;
-    --color-text-muted: #7e8ea0;
-    --btn-secondary-hover: #243140;
-    --btn-ghost-hover: #243140;
-  }
+/* Dark theme lives on the effective-theme attribute (set by the Theme
+   Engine). OS "system" selection is resolved to light/dark in JS before it
+   reaches this selector. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Deliberately designed, not inverted: tinted slate surfaces with
+     brightened semantic accents so every token stays readable. */
+  --color-bg: #10161d;
+  --color-surface: #182130;
+  --color-surface-alt: #1e2837;
+  --color-surface-raised: #202b3c;
+  --color-surface-muted: #1c2534;
+
+  --color-primary: #2d6da6;
+  --color-primary-dark: #245a8a;
+  --color-primary-darker: #122e47;
+  --color-primary-hover: #3a7fb8;
+  --color-primary-active: #2b6499;
+  --color-accent: #2fa06c;
+  --color-accent-dark: #258a5b;
+
+  --color-border: #2b3949;
+  --color-border-strong: #3b4c5f;
+
+  --color-text: #e6edf4;
+  --color-text-secondary: #aebccb;
+  --color-text-muted: #8b9aab;
+  --color-text-subtle: #718192;
+  --color-text-inverse: #ffffff;
+
+  --color-link: #7db6dd;
+  --color-focus: #63a9d8;
+  --color-overlay: rgba(2, 6, 10, 0.6);
+
+  --color-success: #6fd3a0;      --color-success-bg: #0f2e20;      --color-success-border: #1f5e42;
+  --color-warning: #e6b45c;      --color-warning-bg: #33290f;      --color-warning-border: #67500f;
+  --color-danger: #ef8d8d;       --color-danger-bg: #3a1d22;       --color-danger-border: #7a3440;
+  --color-info: #7fb3e0;         --color-info-bg: #12283c;         --color-info-border: #2d5377;
+
+  --status-matched-bg: #0f2e20;    --status-matched-text: #6fd3a0;    --status-matched-border: #1f5e42;
+  --status-mismatched-bg: #33290f; --status-mismatched-text: #e6b45c; --status-mismatched-border: #67500f;
+  --status-missing-bg: #331f0d;    --status-missing-text: #e09a5c;    --status-missing-border: #6b4526;
+  --status-extra-bg: #23294a;      --status-extra-text: #a9b4ec;      --status-extra-border: #3c4a7d;
+  --status-invalid-bg: #3a1d22;    --status-invalid-text: #ef8d8d;    --status-invalid-border: #7a3440;
+
+  --status-pending-bg: #232b33;    --status-pending-text: #aebccb;    --status-pending-border: #3d4b57;
+  --status-running-bg: #12283c;    --status-running-text: #7fb3e0;    --status-running-border: #2d5377;
+  --status-completed-bg: #0f2e20;  --status-completed-text: #6fd3a0;  --status-completed-border: #1f5e42;
+  --status-failed-bg: #3a1d22;     --status-failed-text: #ef8d8d;     --status-failed-border: #7a3440;
+  --status-uploaded-bg: #232b33;   --status-uploaded-text: #aebccb;   --status-uploaded-border: #3d4b57;
+  --status-processing-bg: #12283c; --status-processing-text: #7fb3e0; --status-processing-border: #2d5377;
+
+  --btn-secondary-bg: #1e2837;
+  --btn-secondary-text: #b6c4d3;
+  --btn-secondary-border: #3b4c5f;
+  --btn-secondary-hover: #243140;
+  --btn-danger-bg: #271517;
+  --btn-danger-text: #ef8d8d;
+  --btn-danger-border: #7a3440;
+  --btn-danger-hover-bg: #3a1d22;
+  --btn-ghost-text: #b6c4d3;
+  --btn-ghost-hover: #243140;
+  --btn-disabled-bg: #202b3c;
+  --btn-disabled-text: #5c6b7a;
+
+  --role-admin-bg: #2a2f4d;
+  --role-admin-text: #b9c2f0;
+  --role-admin-border: #4a5285;
+
+  --bar-missing: #e09650;
+  --bar-extra: #8490d8;
+
+  --table-row-hover: #223046;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.55);
 }

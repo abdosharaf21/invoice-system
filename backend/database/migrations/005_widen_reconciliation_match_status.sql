@@ -1,4 +1,5 @@
 -- Migration 005: Widen reconciliation match statuses.
+-- verify: reconciliation_results
 --
 -- The Phase 2 schema stored reconciliation_results.match_status as
 -- VARCHAR(20). The reconciliation engine's status vocabulary includes
